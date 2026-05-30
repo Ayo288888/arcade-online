@@ -1,0 +1,44 @@
+query GetMyJournalEntries @auth(level: USER) {
+  journalEntries(where: { user: { id_expr: "auth.uid" } }) {
+    id
+    entryDate
+    note
+    mood {
+      name
+      colorCode
+    }
+    createdAt
+  }
+}
+
+mutation CreateJournalEntry($entryDate: Date!, $note: String, $moodId: UUID) @auth(level: USER) {
+  journalEntry_insert(
+    data: {
+      userId_expr: "auth.uid"
+      entryDate: $entryDate
+      note: $note
+      moodId: $moodId
+      createdAt_expr: "request.time"
+      updatedAt_expr: "request.time"
+    }
+  ) {
+    id
+  }
+}
+
+mutation UpdateMyJournalEntry($id: UUID!, $note: String, $moodId: UUID) @auth(level: USER) {
+  journalEntry_update(
+    key: { id: $id, userId_expr: "auth.uid" }
+    data: { note: $note, moodId: $moodId, updatedAt_expr: "request.time" }
+  ) {
+    id
+  }
+}
+
+query GetMoodOptions @auth(level: PUBLIC, insecureReason: "This operation is safe to expose to the public") {
+  moodOptions {
+    id
+    name
+    colorCode
+  }
+}
