@@ -1,0 +1,2043 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Online Mini Games Hub</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        .theme-transition { transition: background 1.5s ease-in-out, transform 0.5s ease; }
+        .cell-hover:hover { transform: scale(1.05); background: linear-gradient(135deg, #1e293b, #475569) !important; }
+        .card-inner-oval { border-radius: 50%; transform: rotate(-20deg); }
+        
+        @keyframes pop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.25); color: #f59e0b; }
+            100% { transform: scale(1); }
+        }
+        .pop-anim { animation: pop 0.5s ease-out; }
+
+        /* Animation System */
+        @keyframes action-zoom { 0% { transform: scale(0.5); opacity: 0; } 50% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(1); opacity: 0; } }
+        .animate-action { animation: action-zoom 1.2s ease-out forwards; }
+        
+        @keyframes spin-anim { 0% { transform: scale(0) rotate(0deg); } 100% { transform: scale(1) rotate(360deg); } }
+        @keyframes pulse-shake { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1) rotate(-5deg); } }
+        @keyframes slide-in { 0% { transform: translateX(100vw); } 100% { transform: translateX(0); } }
+    </style>
+</head>
+<body id="bg-wrapper" class="theme-transition min-h-screen flex flex-col justify-between text-white font-sans bg-gradient-to-br from-red-600 via-orange-500 to-yellow-500 selection:bg-black selection:text-white">
+    
+    <div id="actionToast" class="fixed inset-0 flex items-center justify-center z-[500] pointer-events-none hidden">
+        <div id="actionToastContent" class="text-white font-black text-7xl uppercase tracking-tighter drop-shadow-2xl"></div>
+    </div>
+
+    <div id="winnerOverlay" class="fixed inset-0 z-[600] hidden flex items-center justify-center bg-black/80 backdrop-blur-sm p-6 text-center">
+        <div id="winnerBox" class="p-12 rounded-3xl border-4 shadow-2xl">
+            <h2 class="text-6xl font-black uppercase text-white mb-4">Winner!</h2>
+            <p id="winnerName" class="text-3xl font-bold mb-8"></p>
+            <div id="winnerButtons" class="flex flex-col sm:flex-row gap-4 justify-center">
+                <button id="playAgainBtn" onclick="restartUno()" class="px-8 py-4 bg-emerald-600 text-white font-black uppercase rounded-xl cursor-pointer hover:scale-105 transition">Play Again</button>
+                <button onclick="closeWinnerScreen()" class="px-8 py-4 bg-white text-black font-black uppercase rounded-xl cursor-pointer hover:scale-105 transition">Return Home</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="wrongMoveToast" class="fixed inset-0 flex items-center justify-center z-[100] hidden cursor-pointer" onclick="hideError()">
+        <div class="bg-red-600 text-white font-black text-4xl px-8 py-6 rounded-2xl shadow-[0_0_50px_rgba(220,38,38,0.5)] animate-bounce border-4 border-white transform -rotate-3 select-none">
+            WRONG MOVE!
+        </div>
+    </div>
+
+    <nav class="p-6 flex justify-between items-center bg-black/10 backdrop-blur-md border-b border-white/10 z-10">
+        <div class="text-3xl font-black tracking-tighter uppercase drop-shadow cursor-pointer" onclick="goHome()">ARCADE!</div>
+        <div class="flex items-center gap-4">
+            <button onclick="openLeaderboard()" class="text-xs font-black uppercase tracking-widest text-white/60 hover:text-yellow-400 transition hidden sm:block">Leaderboard</button>
+            <button onclick="openGameSelectionPage('offline')" class="bg-white text-black px-5 py-2.5 rounded-full font-bold hover:scale-105 hover:bg-neutral-100 transition inline-block cursor-pointer shadow-md">
+                📴  Pass & Play
+            </button>
+            <button id="authBtn" onclick="openAuthPage()" class="bg-yellow-400 text-black px-5 py-2.5 rounded-full font-bold hover:scale-105 transition cursor-pointer shadow-md">
+                👤  Login
+            </button>
+            <div id="userProfile" class="hidden flex items-center gap-3 bg-white/10 px-4 py-2 rounded-full border border-white/10">
+                <span id="userNameDisplay" class="font-bold text-sm text-yellow-400">Player</span>
+                <button onclick="handleLogout()" class="text-[10px] uppercase font-black opacity-50 hover:opacity-100 transition">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="bg-black/40 border-b border-white/5 py-2 overflow-hidden whitespace-nowrap">
+        <div id="tickerContent" class="inline-block animate-[slide_30s_linear_infinite] text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">
+            <span class="mx-8"><span class="text-yellow-400">●</span> Syncing Legends Online...</span>
+            <span class="mx-8"><span class="text-cyan-400">●</span> Connecting to Global Hub</span>
+            <span class="mx-8"><span class="text-red-500">●</span> Mapping XP Nodes</span>
+            <span class="mx-8"><span class="text-emerald-400">●</span> Ready for Deployment</span>
+        </div>
+    </div>
+    
+    <style>
+        @keyframes slide {
+            from { transform: translateX(0); }
+            to { transform: translateX(-50%); }
+        }
+    </style>
+    
+    <div id="privacyCurtain" class="fixed inset-0 bg-neutral-950 z-50 flex flex-col items-center justify-center p-6 text-center hidden">
+        <div class="bg-gradient-to-br from-amber-500 to-red-600 p-1 rounded-3xl shadow-2xl max-w-sm w-full">
+            <div class="bg-neutral-900 rounded-[22px] px-6 py-10 space-y-6">
+                <h2 class="text-4xl font-black uppercase tracking-tight text-yellow-400 animate-pulse">Pass the Device!</h2>
+                <div class="h-px bg-white/10 w-24 mx-auto"></div>
+                <p id="privacyCurtainTargetText" class="text-xl font-bold tracking-wide">It is now Player X's Turn</p>
+                <p class="text-sm text-white/60">Hide your screen from friends before looking!</p>
+                <button onclick="liftPrivacyCurtain()" class="w-full py-4 bg-white text-black font-black uppercase rounded-xl tracking-wider shadow-lg hover:scale-105 active:scale-95 transition cursor-pointer">
+                    Reveal My Cards  👁️
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <main class="container mx-auto px-6 py-8 flex-grow flex items-center justify-center">
+
+    <div id="authPage" class="w-full max-w-md bg-black/20 backdrop-blur-xl border border-white/10 p-8 rounded-3xl shadow-2xl hidden mx-auto">
+        <div class="text-center mb-8">
+            <h2 id="authTitle" class="text-4xl font-black uppercase tracking-tight text-white">Arcade Account</h2>
+            <p class="text-white/70 mt-1">Join the global elite to track your wins.</p>
+        </div>
+        
+        <div id="loginForm" class="space-y-4">
+            <input type="email" id="loginEmail" placeholder="Email Address" class="w-full p-4 bg-white/10 border border-white/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 text-white" />
+            <input type="password" id="loginPass" placeholder="Password" class="w-full p-4 bg-white/10 border border-white/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 text-white" />
+            <button onclick="handleLogin()" class="w-full py-4 bg-yellow-400 text-black font-black uppercase rounded-xl hover:scale-105 transition shadow-lg">Login</button>
+            <p class="text-xs text-white/50">Don't have an account? <button onclick="toggleAuthMode()" class="text-yellow-400 font-bold underline">Register Now</button></p>
+        </div>
+
+        <div id="registerForm" class="space-y-4 hidden">
+            <input type="text" id="regName" placeholder="Display Name" class="w-full p-4 bg-white/10 border border-white/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 text-white" />
+            <input type="email" id="regEmail" placeholder="Email Address" class="w-full p-4 bg-white/10 border border-white/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 text-white" />
+            <input type="password" id="regPass" placeholder="Password" class="w-full p-4 bg-white/10 border border-white/20 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 text-white" />
+            <button onclick="handleRegister()" class="w-full py-4 bg-gradient-to-r from-yellow-400 to-orange-500 text-black font-black uppercase rounded-xl hover:scale-105 transition shadow-lg">Create Account</button>
+            <p class="text-xs text-white/50">Already have an account? <button onclick="toggleAuthMode()" class="text-yellow-400 font-bold underline">Login Here</button></p>
+        </div>
+        
+        <button onclick="goHome()" class="w-full mt-6 text-sm font-bold text-white/40 uppercase hover:text-white">Cancel</button>
+    </div>
+
+    <div id="leaderboardPage" class="w-full max-w-2xl bg-black/20 backdrop-blur-xl border border-white/10 p-8 rounded-3xl shadow-2xl hidden mx-auto">
+        <div class="flex justify-between items-center mb-8">
+            <h2 class="text-4xl font-black uppercase tracking-tight text-yellow-400">Global Elite</h2>
+            <button onclick="goHome()" class="text-sm font-bold text-white/60 hover:text-white uppercase"> ⬅  Back</button>
+        </div>
+        
+        <div class="space-y-3" id="leaderboardList">
+            <div class="flex items-center justify-center p-12 text-white/40 italic">Loading global rankings...</div>
+        </div>
+    </div>
+
+    <div id="homePage" class="w-full space-y-12">
+        <div class="grid md:grid-cols-2 gap-12 items-center">
+            <div class="space-y-6">
+                <span id="featured-badge" class="bg-orange-500/20 text-orange-200 text-xs uppercase font-extrabold tracking-widest px-3 py-1 rounded-full border border-orange-500/40 inline-block transition-all duration-500">
+                    Featured Mini Game Matrix
+                </span>
+                <h1 id="game-title" class="text-4xl md:text-6xl font-black uppercase tracking-tight drop-shadow-xl transition-all duration-1000">
+                    Ultimate UNO
+                </h1>
+                <p id="game-desc" class="text-lg text-white/90 max-w-md leading-relaxed drop-shadow transition-all duration-1000">
+                    Experience custom built card mechanics built into high fidelity multiplayer systems right from your browser windows.
+                    Connect locally or queue globally.
+                </p>
+                <div class="pt-2 flex flex-wrap gap-4">
+                    <button onclick="openGameSelectionPage('online')" class="bg-yellow-400 text-black font-black text-xl px-10 py-4 rounded-xl shadow-xl hover:bg-white hover:scale-105 transition-all duration-200 uppercase tracking-wider cursor-pointer">
+                        🌐  Enter Online Mode
+                    </button>
+                    <button onclick="openGameSelectionPage('offline')" class="bg-white/10 backdrop-blur-md text-white font-black text-xl px-10 py-4 rounded-xl border border-white/20 hover:bg-white/20 hover:scale-105 transition-all duration-200 uppercase tracking-wider cursor-pointer">
+                        📴  Local Play
+                    </button>
+                </div>
+            </div>
+            <div class="relative flex justify-center items-center h-96 w-full max-w-sm mx-auto">
+                <div class="absolute w-72 h-72 bg-white/10 rounded-full blur-3xl animate-pulse"></div>
+                <div id="card-preview" class="absolute w-52 h-72 bg-red-600 rounded-2xl shadow-2xl p-4 text-white font-black text-6xl flex flex-col justify-between border-4 border-white transition-all duration-700 transform rotate-[-6deg] hover:rotate-0 select-none opacity-100 scale-100 z-10">
+                    <div id="preview-top" class="text-left text-2xl">7</div>
+                    <div class="w-full h-32 bg-white card-inner-oval flex items-center justify-center self-center my-auto overflow-hidden relative shadow-inner">
+                        <span id="preview-center" class="text-center text-5xl font-black text-red-600 tracking-tighter drop-shadow transform rotate-[20deg]">7</span>
+                    </div>
+                    <div id="preview-bottom" class="text-right text-2xl rotate-180">7</div>
+                </div>
+                <div id="grid-preview" class="absolute w-72 h-72 grid grid-cols-3 gap-3 transition-all duration-700 transform rotate-[6deg] hover:rotate-0 opacity-0 scale-75 pointer-events-none z-0">
+                    <div class="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl flex items-center justify-center text-4xl font-black text-cyan-400 select-none shadow-md">X</div>
+                    <div class="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl flex items-center justify-center text-4xl font-black text-white/5 select-none"></div>
+                    <div class="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl flex items-center justify-center text-4xl font-black text-amber-400 select-none shadow-md">O</div>
+                    <div class="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl flex items-center justify-center text-4xl font-black text-white/5 select-none"></div>
+                    <div class="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl flex items-center justify-center text-4xl font-black text-cyan-400 select-none shadow-md">X</div>
+                    <div class="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl flex items-center justify-center text-4xl font-black text-white/5 select-none"></div>
+                    <div class="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl flex items-center justify-center text-4xl font-black text-amber-400 select-none shadow-md">O</div>
+                    <div class="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl flex items-center justify-center text-4xl font-black text-white/5 select-none"></div>
+                    <div class="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl flex items-center justify-center text-4xl font-black text-cyan-400 select-none shadow-md">X</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="bg-black/20 backdrop-blur-md border border-white/10 p-6 rounded-3xl text-center">
+                <span id="statPlayers" class="block text-3xl font-black text-yellow-400">...</span>
+                <span class="text-[10px] uppercase font-bold tracking-widest opacity-60">Legends in Matrix</span>
+            </div>
+            <div id="activeRoomsCard" class="bg-black/20 backdrop-blur-md border border-white/10 p-6 rounded-3xl text-center">
+                <span id="statWins" class="block text-3xl font-black text-cyan-400">...</span>
+                <span class="text-[10px] uppercase font-bold tracking-widest opacity-60">Global Victories</span>
+            </div>
+            <div class="bg-black/20 backdrop-blur-md border border-white/10 p-6 rounded-3xl text-center">
+                <span id="statXP" class="block text-3xl font-black text-red-500">...</span>
+                <span class="text-[10px] uppercase font-bold tracking-widest opacity-60">Total XP Mapped</span>
+            </div>
+            <div class="bg-black/20 backdrop-blur-md border border-white/10 p-6 rounded-3xl text-center">
+                <span class="block text-3xl font-black text-emerald-400">LIVE</span>
+                <span class="text-[10px] uppercase font-bold tracking-widest opacity-60">Node Connection</span>
+            </div>
+        </div>
+
+        <div class="grid lg:grid-cols-3 gap-8">
+            <div class="lg:col-span-2 bg-black/20 backdrop-blur-md border border-white/10 p-8 rounded-[40px] relative overflow-hidden group">
+                <div class="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
+                    <span class="text-9xl font-black italic uppercase tracking-tighter">LIVE</span>
+                </div>
+                <h3 class="text-xl font-black uppercase tracking-widest mb-6 flex items-center gap-2">
+                    <span class="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+                    Recent Champions Feed
+                </h3>
+                <div class="space-y-4" id="recentWinnersFeed">
+                    <!-- Dynamic Feed -->
+                </div>
+            </div>
+
+            <div class="bg-gradient-to-br from-indigo-900/40 to-slate-900/40 backdrop-blur-md border border-white/10 p-8 rounded-[40px] space-y-6">
+                <h3 class="text-xl font-black uppercase tracking-widest text-cyan-300">How to Start</h3>
+                <div class="space-y-4">
+                    <div class="flex gap-4">
+                        <div class="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center font-black text-xs border border-white/20">1</div>
+                        <p class="text-sm text-white/70"><span class="text-white font-bold">Create Account:</span> Login to track your global XP and climb the Global Elite ranking.</p>
+                    </div>
+                    <div class="flex gap-4">
+                        <div class="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center font-black text-xs border border-white/20">2</div>
+                        <p class="text-sm text-white/70"><span class="text-white font-bold">Pick Mode:</span> Choose <span class="text-cyan-400">Online</span> to generate a code or <span class="text-yellow-400">Pass & Play</span> for local fun.</p>
+                    </div>
+                    <div class="flex gap-4">
+                        <div class="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center font-black text-xs border border-white/20">3</div>
+                        <p class="text-sm text-white/70"><span class="text-white font-bold">Deploy:</span> Win matches to earn <span class="text-emerald-400">+150 XP</span> and see your name on the Live Feed!</p>
+                    </div>
+                </div>
+                <button onclick="openAuthPage()" class="w-full py-4 bg-white/5 border border-white/10 hover:bg-white/10 rounded-2xl text-xs font-black uppercase tracking-widest transition">Initialize Profile</button>
+            </div>
+        </div>
+    </div>
+    </div>
+    
+    <div id="selectionPage" class="w-full max-w-2xl bg-black/20 backdrop-blur-xl border border-white/10 p-8 rounded-3xl shadow-2xl hidden">
+        <div class="text-center mb-8">
+            <h2 id="selectionTitle" class="text-4xl font-black uppercase tracking-tight text-white">Select Your Game</h2>
+            <p id="selectionSubtitle" class="text-white/70 mt-1">Choose a game configuration to begin.</p>
+        </div>
+        <div class="grid sm:grid-cols-2 gap-6">
+            <div onclick="selectGame('uno')" class="bg-gradient-to-br from-red-600 to-amber-500 p-6 rounded-2xl shadow-xl border border-white/20 cursor-pointer transform hover:scale-102 transition group">
+                <div class="flex justify-between items-start">
+                    <span class="text-4xl"> 🔥 </span>
+                    <span class="bg-black/30 text-white font-bold text-xs uppercase px-2.5 py-1 rounded">2-10 Players</span>
+                </div>
+                <h3 class="text-2xl font-black uppercase tracking-tight mt-4 group-hover:text-yellow-300 transition">Ultimate UNO</h3>
+                <p class="text-sm text-white/90 mt-1">Match colors and strategic action triggers to force your opponents into draw stacks.</p>
+            </div>
+            <div onclick="selectGame('ttt')" class="bg-gradient-to-br from-slate-900 via-indigo-950 to-cyan-900 p-6 rounded-2xl shadow-xl border border-white/10 cursor-pointer transform hover:scale-102 transition group">
+                <div class="flex justify-between items-start">
+                    <span class="text-4xl"> ❌⭕ </span>
+                    <span class="bg-black/30 text-white font-bold text-xs uppercase px-2.5 py-1 rounded">2 Players</span>
+                </div>
+                <h3 class="text-2xl font-black uppercase tracking-tight mt-4 group-hover:text-cyan-300 transition">Tic Tac Toe</h3>
+                <p class="text-sm text-white/90 mt-1">Classical tactical deployment matrix logic. Build a perfect line matrix to win.</p>
+            </div>
+            <div onclick="selectGame('c4')" class="bg-gradient-to-br from-blue-900 to-red-600 p-6 rounded-2xl shadow-xl border border-white/10 cursor-pointer transform hover:scale-102 transition group">
+                <div class="flex justify-between items-start">
+                    <span class="text-4xl"> 🔴🟡 </span>
+                    <span class="bg-black/30 text-white font-bold text-xs uppercase px-2.5 py-1 rounded">2 Players</span>
+                </div>
+                <h3 class="text-2xl font-black uppercase tracking-tight mt-4 group-hover:text-red-400 transition">Connect Four</h3>
+                <p class="text-sm text-white/90 mt-1">Drop tokens to connect four in a row. Gravity-based tactical alignment.</p>
+            </div>
+            <div onclick="selectGame('rps')" class="bg-gradient-to-br from-amber-600 to-yellow-500 p-6 rounded-2xl shadow-xl border border-white/10 cursor-pointer transform hover:scale-102 transition group">
+                <div class="flex justify-between items-start">
+                    <span class="text-4xl"> ✊✋✌️ </span>
+                    <span class="bg-black/30 text-white font-bold text-xs uppercase px-2.5 py-1 rounded">2 Players</span>
+                </div>
+                <h3 class="text-2xl font-black uppercase tracking-tight mt-4 group-hover:text-yellow-200 transition">RPS Battle</h3>
+                <p class="text-sm text-white/90 mt-1">Rock Paper Scissors. Quick tactical choice execution.</p>
+            </div>
+            <div onclick="selectGame('memory')" class="bg-gradient-to-br from-emerald-600 to-teal-700 p-6 rounded-2xl shadow-xl border border-white/10 cursor-pointer transform hover:scale-102 transition group sm:col-span-2">
+                <div class="flex justify-between items-start">
+                    <span class="text-4xl"> 🧠 </span>
+                    <span class="bg-black/30 text-white font-bold text-xs uppercase px-2.5 py-1 rounded">2 Players</span>
+                </div>
+                <h3 class="text-2xl font-black uppercase tracking-tight mt-4 group-hover:text-emerald-300 transition">Memory Match</h3>
+                <p class="text-sm text-white/90 mt-1">Find matching pairs in a grid of hidden cards. Test your cognitive recall.</p>
+            </div>
+        </div>
+        <div class="text-center mt-6">
+            <button onclick="goHome()" class="text-sm font-bold text-white/60 hover:text-white uppercase tracking-wider underline"> ⬅  Return Home</button>
+        </div>
+    </div>
+    
+    <div id="ticTacToePage" class="w-full max-w-md bg-black/20 backdrop-blur-xl border border-white/10 p-8 rounded-3xl shadow-2xl text-center hidden">
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-3xl font-black text-cyan-300 uppercase tracking-tight">Tic Tac Toe</h2>
+            <button onclick="returnToSelection()" class="bg-white/10 hover:bg-white/20 text-xs font-bold uppercase px-3 py-2 rounded-lg transition border border-white/10"> ⬅  Back</button>
+        </div>
+        
+        <div id="scoreboard" class="hidden flex flex-row flex-nowrap justify-between items-center bg-black/30 p-4 rounded-xl border border-white/10 mb-6">
+            <div class="text-center w-1/3">
+                <span class="text-[10px] text-amber-400 block font-black uppercase tracking-widest">Player X</span>
+                <span id="scoreX" class="text-2xl font-black transition-transform">0</span>
+            </div>
+            <div class="text-center w-1/3 border-x border-white/10">
+                <span class="text-[10px] text-white/50 block font-black uppercase tracking-widest">Draws</span>
+                <span id="scoreDraw" class="text-2xl font-black transition-transform">0</span>
+            </div>
+            <div class="text-center w-1/3">
+                <span class="text-[10px] text-cyan-400 block font-black uppercase tracking-widest">Player O</span>
+                <span id="scoreO" class="text-2xl font-black transition-transform">0</span>
+            </div>
+        </div>
+
+        <div id="menu" class="space-y-4">
+            <div class="text-white/60 text-xs font-bold uppercase tracking-wider mb-2">Cloud Matchmaking Setup</div>
+            <input type="text" id="playerName" placeholder="Enter your name" class="w-full p-4 bg-white/10 border border-white/20 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-cyan-300 placeholder-white/50 text-white text-center" />
+            <button onclick="createRoom()" class="w-full p-4 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-xl font-bold uppercase tracking-wider hover:scale-[1.02] active:scale-[0.98] transition shadow-md">Create Lobby Room</button>
+
+            <div class="relative flex py-2 items-center">
+                <div class="flex-grow border-t border-white/10"></div>
+                <span class="flex-shrink mx-4 text-white/40 text-xs font-bold uppercase">Or Join Existing</span>
+                <div class="flex-grow border-t border-white/10"></div>
+            </div>
+            <input type="text" id="roomInput" placeholder="Enter room code" class="w-full p-4 bg-white/10 border border-white/20 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-cyan-300 placeholder-white/50 text-white text-center uppercase" />
+            <button onclick="joinRoom()" class="w-full p-4 bg-white text-black rounded-xl font-bold uppercase tracking-wider hover:scale-[1.02] active:scale-[0.98] transition shadow-md">Join Match</button>
+            <button onclick="joinRandomTTT()" class="w-full p-4 bg-neutral-800 text-white border border-white/20 rounded-xl font-bold uppercase tracking-wider hover:bg-neutral-700 transition shadow-md">Join Random Lobby</button>
+        </div>
+        <div class="roomCode my-4 text-2xl font-black text-cyan-300 tracking-wider" id="roomCode"></div>
+        <div class="status my-2 text-lg opacity-90 font-semibold tracking-wide" id="status"></div>
+        
+        <div id="board" class="hidden grid grid-cols-3 gap-3 mt-6"></div>
+    </div>
+    
+    <div id="connectFourPage" class="w-full max-w-xl bg-black/20 backdrop-blur-xl border border-white/10 p-8 rounded-3xl shadow-2xl text-center hidden mx-auto">
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-3xl font-black text-red-500 uppercase tracking-tight">Connect Four</h2>
+            <button onclick="returnToSelection()" class="bg-white/10 hover:bg-white/20 text-xs font-bold uppercase px-3 py-2 rounded-lg transition border border-white/10"> ⬅  Back</button>
+        </div>
+        
+        <div id="c4Menu" class="space-y-4">
+            <div class="text-white/60 text-xs font-bold uppercase tracking-wider mb-2">Cloud Matchmaking Setup</div>
+            <input type="text" id="c4PlayerName" placeholder="Enter your name" class="w-full p-4 bg-white/10 border border-white/20 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-red-500 placeholder-white/50 text-white text-center" />
+            <button onclick="createC4Room()" class="w-full p-4 bg-gradient-to-r from-red-500 to-orange-600 rounded-xl font-bold uppercase tracking-wider hover:scale-[1.02] active:scale-[0.98] transition shadow-md">Host New Room</button>
+
+            <div class="relative flex py-2 items-center">
+                <div class="flex-grow border-t border-white/10"></div>
+                <span class="flex-shrink mx-4 text-white/40 text-xs font-bold uppercase">Or Join Existing</span>
+                <div class="flex-grow border-t border-white/10"></div>
+            </div>
+            <input type="text" id="c4RoomInput" placeholder="Enter room code" class="w-full p-4 bg-white/10 border border-white/20 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-red-500 placeholder-white/50 text-white text-center uppercase" />
+            <button onclick="joinC4Room()" class="w-full p-4 bg-white text-black rounded-xl font-bold uppercase tracking-wider hover:scale-[1.02] active:scale-[0.98] transition shadow-md">Join Match</button>
+        </div>
+
+        <div id="c4Game" class="hidden">
+            <div class="roomCode my-2 text-2xl font-black text-red-500 tracking-wider" id="c4RoomCode"></div>
+            <div class="status my-2 text-lg opacity-90 font-semibold tracking-wide" id="c4Status"></div>
+            <div id="c4Board" class="grid grid-cols-7 gap-2 bg-blue-900/40 p-4 rounded-2xl border-4 border-blue-800 shadow-2xl mt-4"></div>
+        </div>
+    </div>
+
+    <div id="rpsPage" class="w-full max-w-xl bg-black/20 backdrop-blur-xl border border-white/10 p-8 rounded-3xl shadow-2xl text-center hidden mx-auto">
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-3xl font-black text-amber-400 uppercase tracking-tight">Rock Paper Scissors</h2>
+            <button onclick="returnToSelection()" class="bg-white/10 hover:bg-white/20 text-xs font-bold uppercase px-3 py-2 rounded-lg transition border border-white/10"> ⬅  Back</button>
+        </div>
+
+        <div id="rpsMenu" class="space-y-4">
+            <div class="text-white/60 text-xs font-bold uppercase tracking-wider mb-2">Cloud Matchmaking Setup</div>
+            <input type="text" id="rpsPlayerName" placeholder="Enter your name" class="w-full p-4 bg-white/10 border border-white/20 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-amber-400 placeholder-white/50 text-white text-center" />
+            <button onclick="createRPSRoom()" class="w-full p-4 bg-gradient-to-r from-amber-400 to-yellow-600 rounded-xl font-bold uppercase tracking-wider hover:scale-[1.02] active:scale-[0.98] transition shadow-md">Host New Room</button>
+
+            <div class="relative flex py-2 items-center">
+                <div class="flex-grow border-t border-white/10"></div>
+                <span class="flex-shrink mx-4 text-white/40 text-xs font-bold uppercase">Or Join Existing</span>
+                <div class="flex-grow border-t border-white/10"></div>
+            </div>
+            <input type="text" id="rpsRoomInput" placeholder="Enter room code" class="w-full p-4 bg-white/10 border border-white/20 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-amber-400 placeholder-white/50 text-white text-center uppercase" />
+            <button onclick="joinRPSRoom()" class="w-full p-4 bg-white text-black rounded-xl font-bold uppercase tracking-wider hover:scale-[1.02] active:scale-[0.98] transition shadow-md">Join Match</button>
+        </div>
+
+        <div id="rpsGame" class="hidden space-y-8">
+            <div id="rpsStatus" class="text-2xl font-black uppercase tracking-widest text-white animate-pulse">Choose Your Weapon</div>
+
+            <div id="rpsChoices" class="flex justify-center gap-6 py-8">
+                <button onclick="playRPS('rock')" class="w-28 h-28 bg-neutral-800 rounded-3xl border-4 border-white/20 text-5xl hover:scale-110 hover:border-amber-400 transition-all flex items-center justify-center shadow-xl">✊</button>
+                <button onclick="playRPS('paper')" class="w-28 h-28 bg-neutral-800 rounded-3xl border-4 border-white/20 text-5xl hover:scale-110 hover:border-amber-400 transition-all flex items-center justify-center shadow-xl">✋</button>
+                <button onclick="playRPS('scissors')" class="w-28 h-28 bg-neutral-800 rounded-3xl border-4 border-white/20 text-5xl hover:scale-110 hover:border-amber-400 transition-all flex items-center justify-center shadow-xl">✌️</button>
+            </div>
+
+            <div id="rpsArena" class="flex justify-around items-center opacity-0 transition-opacity duration-500">
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase opacity-50 block mb-2">You</span>
+                    <div id="myRPSResult" class="w-32 h-32 bg-white/10 rounded-full border-4 border-white flex items-center justify-center text-6xl shadow-inner"></div>
+                </div>
+                <div class="text-4xl font-black italic">VS</div>
+                <div class="text-center">
+                    <span class="text-xs font-bold uppercase opacity-50 block mb-2">Opponent</span>
+                    <div id="opponentRPSResult" class="w-32 h-32 bg-white/10 rounded-full border-4 border-white flex items-center justify-center text-6xl shadow-inner"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="memoryPage" class="w-full max-w-2xl bg-black/20 backdrop-blur-xl border border-white/10 p-8 rounded-3xl shadow-2xl text-center hidden mx-auto">
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-3xl font-black text-emerald-400 uppercase tracking-tight">Memory Match</h2>
+            <button onclick="returnToSelection()" class="bg-white/10 hover:bg-white/20 text-xs font-bold uppercase px-3 py-2 rounded-lg transition border border-white/10"> ⬅  Back</button>
+        </div>
+        
+        <div id="memoryMenu" class="space-y-4">
+            <div class="text-white/60 text-xs font-bold uppercase tracking-wider mb-2">Cloud Matchmaking Setup</div>
+            <input type="text" id="memoryPlayerName" placeholder="Enter your name" class="w-full p-4 bg-white/10 border border-white/20 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-emerald-400 placeholder-white/50 text-white text-center" />
+            <button onclick="createMemoryRoom()" class="w-full p-4 bg-gradient-to-r from-emerald-400 to-teal-600 rounded-xl font-bold uppercase tracking-wider hover:scale-[1.02] active:scale-[0.98] transition shadow-md">Host New Room</button>
+
+            <div class="relative flex py-2 items-center">
+                <div class="flex-grow border-t border-white/10"></div>
+                <span class="flex-shrink mx-4 text-white/40 text-xs font-bold uppercase">Or Join Existing</span>
+                <div class="flex-grow border-t border-white/10"></div>
+            </div>
+            <input type="text" id="memoryRoomInput" placeholder="Enter room code" class="w-full p-4 bg-white/10 border border-white/20 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-emerald-400 placeholder-white/50 text-white text-center uppercase" />
+            <button onclick="joinMemoryRoom()" class="w-full p-4 bg-white text-black rounded-xl font-bold uppercase tracking-wider hover:scale-[1.02] active:scale-[0.98] transition shadow-md">Join Match</button>
+        </div>
+
+        <div id="memoryGame" class="hidden">
+            <div class="flex justify-between items-center mb-4 bg-black/30 p-4 rounded-xl border border-white/10">
+                <div class="text-left">
+                    <span id="memoryPlayer1Name" class="text-[10px] text-emerald-400 block font-black uppercase tracking-widest">Player 1</span>
+                    <span id="memoryScore1" class="text-2xl font-black">0</span>
+                </div>
+                <div id="memoryStatus" class="text-sm font-bold uppercase tracking-widest text-white/60">Your Turn</div>
+                <div class="text-right">
+                    <span id="memoryPlayer2Name" class="text-[10px] text-amber-400 block font-black uppercase tracking-widest">Player 2</span>
+                    <span id="memoryScore2" class="text-2xl font-black">0</span>
+                </div>
+            </div>
+            <div id="memoryBoard" class="grid grid-cols-4 gap-3"></div>
+        </div>
+    </div>
+    
+    <div id="unoPage" class="w-full max-w-4xl bg-black/20 backdrop-blur-xl border border-white/10 p-8 rounded-3xl shadow-2xl hidden mx-auto">
+        <div class="flex justify-between items-center mb-6">
+            <div>
+                <span id="unoModeBadge" class="text-xs uppercase font-extrabold tracking-widest px-2 py-0.5 bg-black/30 rounded border border-white/10 text-yellow-300">Offline Local Mode</span>
+                <h2 class="text-3xl font-black text-white uppercase tracking-tight mt-1"> 🔥  Ultimate UNO</h2>
+            </div>
+            <button onclick="returnToSelection()" class="bg-white/10 hover:bg-white/20 font-bold uppercase px-4 py-2 rounded-xl transition border border-white/10"> ⬅  Back</button>
+        </div>
+
+        <div id="unoSetup" class="text-center py-8 space-y-6 max-w-md mx-auto">
+            <div id="unoOfflineControls" class="space-y-4">
+                <p class="text-xl font-semibold opacity-90">How many local friends are playing together?</p>
+                <div class="bg-black/30 p-4 rounded-2xl border border-white/10 space-y-3">
+                    <div class="flex items-center justify-between px-2">
+                        <span class="font-bold text-sm tracking-wide text-white/80">Total Players:</span>
+                        <span id="playerCountLabel" class="text-2xl font-black text-yellow-300 bg-neutral-900 px-4 py-1 rounded-xl border border-white/20">4</span>
+                    </div>
+                    <input type="range" id="unoPlayerSlider" min="2" max="10" value="4" oninput="updatePlayerSliderLabel(this.value)" class="w-full accent-yellow-400 h-2 bg-white/20 rounded-lg cursor-pointer" />
+                    <button onclick="startUno(parseInt(document.getElementById('unoPlayerSlider').value))" class="w-full py-4 bg-yellow-400 hover:bg-yellow-300 text-black font-black text-lg rounded-xl transition shadow-lg uppercase tracking-wider cursor-pointer">
+                        Launch Match  🚀
+                    </button>
+                </div>
+            </div>
+            <div id="unoOnlineControls" class="space-y-4 hidden">
+                <p class="text-xl font-semibold opacity-90 text-yellow-300">Setup Cloud Match Lobby Room</p>
+                <input type="text" id="unoPlayerName" placeholder="Enter Nickname" class="w-full p-4 bg-white/10 border border-white/20 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-yellow-300 placeholder-white/50 text-white text-center" />
+                <button onclick="createUnoOnlineRoom()" class="w-full p-4 bg-gradient-to-r from-yellow-400 to-amber-500 text-black font-extrabold uppercase tracking-wider rounded-xl hover:scale-105 transition shadow-md">Host New UNO Lobby</button>
+
+                <div class="relative flex py-1 items-center">
+                    <div class="flex-grow border-t border-white/10"></div>
+                    <span class="flex-shrink mx-4 text-white/40 text-xs font-bold uppercase">Join Existing</span>
+                    <div class="flex-grow border-t border-white/10"></div>
+                </div>
+
+                <input type="text" id="unoRoomInput" placeholder="Enter 6-Digit Code" class="w-full p-4 bg-white/10 border border-white/20 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-yellow-300 placeholder-white/50 text-white text-center uppercase" />
+                <button onclick="joinUnoOnlineRoom()" class="w-full p-4 bg-white text-black font-bold uppercase tracking-wider rounded-xl hover:scale-105 transition shadow-md">Connect to Match</button>
+                <button onclick="joinRandomUno()" class="w-full p-4 bg-neutral-800 text-white border border-white/20 rounded-xl font-bold uppercase tracking-wider hover:bg-neutral-700 transition shadow-md">Join Random Lobby</button>
+            </div>
+            <div class="text-center mt-4">
+                <div id="unoRoomCodeDisplay" class="text-2xl font-black text-yellow-300 tracking-widest uppercase"></div>
+                <div id="unoLobbyStatus" class="text-sm font-medium text-white/70 mt-1"></div>
+            </div>
+        </div>
+        
+        <div id="unoActiveGame" class="hidden space-y-6">
+            <div class="bg-black/20 p-4 rounded-2xl text-center font-bold text-lg tracking-wide">
+                <span class="block text-xs uppercase opacity-50 mb-1">Active Turn</span>
+                <span class="text-yellow-300 text-xl font-black" id="unoCurrentPlayerDisplay">Player 1</span>
+            </div>
+            
+            <div class="flex items-center justify-center gap-12 py-6 relative">
+                <div class="text-center">
+                    <span class="text-xs uppercase font-bold opacity-40 block mb-2">Discard Pile</span>
+                    <div id="topCardPile" class="w-32 h-48 bg-red-600 rounded-2xl border-4 border-white shadow-[0_10px_25px_rgba(0,0,0,0.5)] p-4 text-white font-black flex flex-col justify-between transition-all">
+                        <div id="topCardValLeft" class="text-left text-2xl font-black">7</div>
+                        <div id="topCardCenterWrapper" class="w-full h-20 bg-white card-inner-oval flex items-center justify-center self-center my-auto overflow-hidden shadow-inner">
+                            <span id="topCardCenter" class="text-center text-3xl font-extrabold tracking-tighter text-red-600 transform rotate-[20deg]">7</span>
+                        </div>
+                        <div id="topCardValRight" class="text-right text-2xl font-black rotate-180">7</div>
+                    </div>
+                </div>
+
+                <div class="text-center">
+                    <span class="text-xs uppercase font-bold opacity-40 block mb-2">Draw Deck</span>
+                    <div onclick="drawUnoCard()" class="cursor-pointer relative w-32 h-48 group">
+                        <div class="absolute inset-0 bg-neutral-800 rounded-2xl border border-white/10 rotate-[-4deg] shadow-lg group-hover:rotate-[-8deg] transition-all"></div>
+                        <div class="absolute inset-0 bg-neutral-800 rounded-2xl border border-white/10 rotate-[-2deg] shadow-lg group-hover:rotate-[-4deg] transition-all"></div>
+                        <div class="absolute inset-0 bg-gradient-to-tr from-indigo-950 to-purple-900 rounded-2xl border-4 border-white shadow-xl flex flex-col items-center justify-center select-none group-hover:scale-105 transition-all overflow-hidden">
+                             <div class="w-20 h-20 border-4 border-white/30 rounded-full flex items-center justify-center">
+                                 <span class="text-white/40 font-black text-2xl rotate-[-20deg]">UNO</span>
+                             </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="space-y-3">
+                <div class="px-1">
+                    <h3 class="font-black uppercase tracking-wider text-sm opacity-60">Your Hand Stacks</h3>
+                </div>
+                <div id="unoHand" class="flex flex-wrap gap-3 justify-center min-h-[160px] p-4 bg-black/10 rounded-2xl"></div>
+            </div>
+        </div>
+    </div>
+    </main>
+    <div class="p-4"></div>
+    
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+        import { getDatabase, ref, set, onValue, update, get, query, orderByChild, limitToLast } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, updateProfile } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+
+        // --- FIREBASE CONFIGURATION ---
+        // PASTE YOUR FIREBASE CONFIG HERE
+const firebaseConfig = {
+        apiKey: "AIzaSyCAwuHlgEXI1z7h8yexEgzS-ggz98oq6bQ",
+        authDomain: "fit-ai-47b36.firebaseapp.com",
+        databaseURL: "https://fit-ai-47b36-default-rtdb.firebaseio.com",
+        projectId: "fit-ai-47b36",
+        storageBucket: "fit-ai-47b36.firebasestorage.app",
+        messagingSenderId: "848068449170",
+        appId: "1:848068449170:web:ee8f78a361fcce14fa274b"
+};
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        const auth = getAuth(app);
+
+        let currentUser = null;
+
+        // --- PEERJS NETWORKING LAYER ---
+        let peer = null;
+        let connections = []; // For host: list of guest connections
+        let guestConn = null; // For guest: connection to host
+        let isHost = false;
+        let myPeerId = '';
+        let networkCallbacks = {};
+
+        function initNetwork(role, existingRoomId = null) {
+            return new Promise((resolve, reject) => {
+                if (peer) peer.destroy();
+                
+                // Use a short ID if possible, or let PeerJS generate one
+                peer = new Peer(role === 'host' ? generateCode() : null, {
+                    debug: 1
+                });
+
+                peer.on('open', (id) => {
+                    myPeerId = id;
+                    isHost = (role === 'host');
+                    if (isHost) {
+                        console.log("Host Peer ID:", id);
+                        setupHostListeners();
+                        resolve(id);
+                    } else {
+                        console.log("Guest Peer ID:", id);
+                        connectToHost(existingRoomId).then(resolve).catch(reject);
+                    }
+                });
+
+                peer.on('error', (err) => {
+                    console.error("PeerJS Error:", err);
+                    alert("Connection Error: " + err.type);
+                    reject(err);
+                });
+            });
+        }
+
+        function setupHostListeners() {
+            peer.on('connection', (conn) => {
+                connections.push(conn);
+                setupConnection(conn);
+                console.log("New guest connected:", conn.peer);
+                // When someone joins, the host will eventually broadcast the initial state
+                if (networkCallbacks.onPlayerJoined) networkCallbacks.onPlayerJoined(conn);
+            });
+        }
+
+        function connectToHost(hostId) {
+            return new Promise((resolve, reject) => {
+                guestConn = peer.connect(hostId);
+                guestConn.on('open', () => {
+                    setupConnection(guestConn);
+                    resolve(hostId);
+                });
+                guestConn.on('error', reject);
+                setTimeout(() => reject("Timeout connecting to host"), 10000);
+            });
+        }
+
+        function setupConnection(conn) {
+            conn.on('data', (data) => {
+                console.log("Received data:", data);
+                if (networkCallbacks.onData) networkCallbacks.onData(data, conn);
+            });
+            conn.on('close', () => {
+                console.log("Connection closed:", conn.peer);
+                if (isHost) {
+                    connections = connections.filter(c => c !== conn);
+                } else {
+                    alert("Host disconnected.");
+                    goHome();
+                }
+            });
+        }
+
+        function broadcast(data) {
+            if (isHost) {
+                connections.forEach(conn => {
+                    if (conn.open) conn.send(data);
+                });
+            } else if (guestConn && guestConn.open) {
+                guestConn.send(data);
+            }
+        }
+
+        const boardElement = document.getElementById('board');
+        const statusText = document.getElementById('status');
+        const roomCodeText = document.getElementById('roomCode');
+        const scoreXEl = document.getElementById('scoreX');
+        const scoreOEl = document.getElementById('scoreO');
+        const scoreDrawEl = document.getElementById('scoreDraw');
+        
+        let roomId = '';
+        let playerSymbol = '';
+        let firstPlayer = 'X'; 
+        let currentBoard = Array(9).fill('');
+        let currentTurn = 'X';
+        let isLocalMode = false;
+        let scores = { X: 0, O: 0, Draw: 0 };
+        
+        let alternateCycleIndex = 0;
+        let currentGlobalMode = 'offline';
+        let errorTimeout;
+        let unoPlayerCount = 4;
+        
+        let winCount = 0;
+        window.lastKnownAction = ''; 
+
+        const homeThemes = [
+            {
+                bg: "from-red-600 via-orange-500 to-yellow-500",
+                title: "Ultimate UNO",
+                desc: "Experience custom built card mechanics built into high fidelity multiplayer systems right from your browser windows. Connect locally or queue globally.",
+                badge: "Featured Mini Game Matrix",
+                badgeClass: "bg-orange-500/20 text-orange-200 border-orange-500/40"
+            },
+            {
+                bg: "from-slate-900 via-indigo-950 to-cyan-900",
+                title: "Tic Tac Toe",
+                desc: "Run tactical deployment schemas over real-time node connections. Establish an unbroken vector string line before your adversary blocks you.",
+                badge: "Active Node Connectors",
+                badgeClass: "bg-cyan-500/20 text-cyan-200 border-cyan-500/30"
+            },
+            {
+                bg: "from-blue-900 to-red-600",
+                title: "Connect Four",
+                desc: "Challenge your friends to the ultimate gravity-based strategy match. Align four tokens before your opponent blocks your path.",
+                badge: "Tactical Gravity Alignment",
+                badgeClass: "bg-red-500/20 text-red-200 border-red-500/30"
+            },
+            {
+                bg: "from-amber-600 to-yellow-500",
+                title: "RPS Battle",
+                desc: "The classic Rock Paper Scissors reimagined for high-speed online play. Quick decisions, instant results, and tactical mind games.",
+                badge: "Instant Decision Matrix",
+                badgeClass: "bg-yellow-500/20 text-yellow-100 border-yellow-500/30"
+            },
+            {
+                bg: "from-emerald-600 to-teal-700",
+                title: "Memory Match",
+                desc: "Test your cognitive recall with this high-fidelity memory game. Find all matching pairs to establish dominance over the board.",
+                badge: "Cognitive Recall Grid",
+                badgeClass: "bg-emerald-500/20 text-emerald-100 border-emerald-500/30"
+            }
+        ];
+
+        function showError() {
+            const toast = document.getElementById('wrongMoveToast');
+            toast.classList.remove('hidden');
+            clearTimeout(errorTimeout);
+            errorTimeout = setTimeout(hideError, 2000);
+        }
+
+        function hideError() {
+            document.getElementById('wrongMoveToast').classList.add('hidden');
+            clearTimeout(errorTimeout);
+        }
+
+        function triggerActionToast(message, colorClass) {
+            const toast = document.getElementById('actionToast');
+            const content = document.getElementById('actionToastContent');
+            content.innerText = message;
+            content.className = `text-white font-black text-7xl uppercase tracking-tighter drop-shadow-2xl ${colorClass}`;
+            toast.classList.remove('hidden');
+            toast.classList.add('animate-action');
+            setTimeout(() => {
+                toast.classList.add('hidden');
+                toast.classList.remove('animate-action');
+            }, 1200);
+        }
+
+        function showWinnerScreen(winnerName) {
+            const overlay = document.getElementById('winnerOverlay');
+            const box = document.getElementById('winnerBox');
+            const playAgainBtn = document.getElementById('playAgainBtn');
+            
+            if (window.isUnoOnlineMode || document.getElementById('ticTacToePage').classList.contains('hidden') === false) {
+                playAgainBtn.classList.add('hidden');
+            } else {
+                playAgainBtn.classList.remove('hidden');
+            }
+
+            document.getElementById('winnerName').innerText = winnerName;
+            
+            const themes = [
+                { class: 'bg-indigo-900 border-indigo-400', anim: 'spin-anim 0.8s ease-out' },
+                { class: 'bg-emerald-900 border-emerald-400', anim: 'pulse-shake 0.8s ease-out' },
+                { class: 'bg-rose-900 border-rose-400', anim: 'slide-in 0.8s ease-out' }
+            ];
+            
+            const theme = themes[winCount % 3];
+            box.className = `p-12 rounded-3xl border-4 shadow-2xl ${theme.class}`;
+            box.style.animation = theme.anim;
+            
+            overlay.classList.remove('hidden');
+            winCount++;
+
+            // Update Homepage Feed
+            addWinnerToFeed(winnerName);
+
+            // Global XP Reward
+            if (currentUser && (winnerName.includes(currentUser.displayName) || winnerName.toLowerCase().includes("you win"))) {
+                awardXP(150);
+            }
+        }
+
+        function addWinnerToFeed(name) {
+            const feed = document.getElementById('recentWinnersFeed');
+            const newWinner = document.createElement('div');
+            newWinner.className = "flex items-center justify-between border-b border-white/5 pb-4 animate-pulse";
+            
+            const games = ["Ultimate UNO", "Tic Tac Toe", "Connect Four", "RPS Battle", "Memory Match"];
+            const randomGame = games[Math.floor(Math.random() * games.length)];
+            const initials = name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+            
+            newWinner.innerHTML = `
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 bg-gradient-to-br from-white/20 to-white/5 rounded-full flex items-center justify-center font-black text-white border border-white/10">${initials}</div>
+                    <div>
+                        <span class="block font-bold">${name}</span>
+                        <span class="text-[10px] uppercase opacity-50">Victory in ${randomGame}</span>
+                    </div>
+                </div>
+                <span class="text-xs font-black text-emerald-400">+200 XP</span>
+            `;
+            feed.prepend(newWinner);
+            if(feed.children.length > 5) feed.removeChild(feed.lastChild);
+        }
+
+        function closeWinnerScreen() {
+            document.getElementById('winnerOverlay').classList.add('hidden');
+            goHome();
+        }
+
+        function restartUno() {
+            document.getElementById('winnerOverlay').classList.add('hidden');
+            startUno(unoPlayerCount);
+        }
+
+        function goHome() {
+            window.isUnoOnlineMode = false;
+            window.isC4OnlineMode = false;
+            window.isRPSOnlineMode = false;
+            window.isMemoryOnlineMode = false;
+            if (peer) peer.destroy();
+            peer = null; connections = []; guestConn = null;
+            document.getElementById('privacyCurtain').classList.add('hidden');
+            document.getElementById('ticTacToePage').classList.add('hidden');
+            document.getElementById('unoPage').classList.add('hidden');
+            document.getElementById('connectFourPage').classList.add('hidden');
+            document.getElementById('rpsPage').classList.add('hidden');
+            document.getElementById('memoryPage').classList.add('hidden');
+            document.getElementById('selectionPage').classList.add('hidden');
+            document.getElementById('authPage').classList.add('hidden');
+            document.getElementById('leaderboardPage').classList.add('hidden');
+            document.getElementById('homePage').classList.remove('hidden');
+
+            alternateCycleIndex = 0;
+            const state = homeThemes[0];
+            document.getElementById('bg-wrapper').className = "theme-transition min-h-screen flex flex-col justify-between text-white font-sans bg-gradient-to-br from-red-600 via-orange-500 to-yellow-500 selection:bg-black selection:text-white";
+            document.getElementById('game-title').innerText = state.title;
+            document.getElementById('game-desc').innerText = state.desc;
+            document.getElementById('featured-badge').innerText = state.badge;
+            document.getElementById('featured-badge').className = `text-xs uppercase font-extrabold tracking-widest px-3 py-1 rounded-full border inline-block transition-all duration-500 ${state.badgeClass}`;
+            document.getElementById('card-preview').className = document.getElementById('card-preview').className.replace('opacity-0', 'opacity-100').replace('scale-75', 'scale-100');
+            document.getElementById('grid-preview').className = document.getElementById('grid-preview').className.replace('opacity-100', 'opacity-0').replace('scale-100', 'scale-75');
+        }
+
+        function openGameSelectionPage(mode) {
+            currentGlobalMode = mode;
+            document.getElementById('homePage').classList.add('hidden');
+            document.getElementById('ticTacToePage').classList.add('hidden');
+            document.getElementById('unoPage').classList.add('hidden');
+            document.getElementById('connectFourPage').classList.add('hidden');
+            document.getElementById('rpsPage').classList.add('hidden');
+            document.getElementById('memoryPage').classList.add('hidden');
+            document.getElementById('authPage').classList.add('hidden');
+            document.getElementById('leaderboardPage').classList.add('hidden');
+            document.getElementById('selectionPage').classList.remove('hidden');
+            
+            const title = document.getElementById('selectionTitle');
+            const sub = document.getElementById('selectionSubtitle');
+            const wrapper = document.getElementById('bg-wrapper');
+            
+            if(mode === 'online') {
+                title.innerText = " 🌐  Online Multiplayer Lounge";
+                sub.innerText = "Match with players worldwide using cloud room parameters.";
+                wrapper.className = "theme-transition min-h-screen flex flex-col justify-between text-white font-sans bg-gradient-to-br from-slate-900 via-indigo-950 to-cyan-900 selection:bg-black selection:text-white";
+            } else {
+                title.innerText = " 📴  Quick Play Offline Hub";
+                sub.innerText = "Pass-and-play gaming layouts built for instant local sessions.";
+                wrapper.className = "theme-transition min-h-screen flex flex-col justify-between text-white font-sans bg-gradient-to-br from-red-600 via-orange-500 to-yellow-500 selection:bg-black selection:text-white";
+            }
+        }
+
+        function selectGame(game) {
+            document.getElementById('selectionPage').classList.add('hidden');
+            if(game === 'uno') {
+                document.getElementById('unoPage').classList.remove('hidden');
+                document.getElementById('unoSetup').style.display = 'block';
+                document.getElementById('unoActiveGame').classList.add('hidden');
+                document.getElementById('unoRoomCodeDisplay').innerText = '';
+                document.getElementById('unoLobbyStatus').innerText = '';
+                if(currentGlobalMode === 'online') {
+                    document.getElementById('unoModeBadge').innerText = " 🌐  Connected Cloud Mode";
+                    document.getElementById('unoOfflineControls').classList.add('hidden');
+                    document.getElementById('unoOnlineControls').classList.remove('hidden');
+                } else {
+                    document.getElementById('unoModeBadge').innerText = "Offline Pass-and-Play Mode";
+                    document.getElementById('unoOfflineControls').classList.remove('hidden');
+                    document.getElementById('unoOnlineControls').classList.add('hidden');
+                }
+            } else if (game === 'ttt') {
+                document.getElementById('ticTacToePage').classList.remove('hidden');
+                document.getElementById('scoreboard').classList.add('hidden');
+                document.getElementById('board').classList.add('hidden');
+                document.getElementById('menu').style.display = 'block';
+                document.getElementById('status').innerText = '';
+                
+                if(currentGlobalMode === 'online') {
+                    document.getElementById('roomCode').innerText = '';
+                } else {
+                    startLocalTTT();
+                }
+            } else if (game === 'c4') {
+                document.getElementById('connectFourPage').classList.remove('hidden');
+                document.getElementById('c4Menu').style.display = 'block';
+                document.getElementById('c4Game').classList.add('hidden');
+                if(currentGlobalMode === 'offline') startLocalC4();
+            } else if (game === 'rps') {
+                document.getElementById('rpsPage').classList.remove('hidden');
+                document.getElementById('rpsMenu').style.display = 'block';
+                document.getElementById('rpsGame').classList.add('hidden');
+                if(currentGlobalMode === 'offline') startLocalRPS();
+            } else if (game === 'memory') {
+                document.getElementById('memoryPage').classList.remove('hidden');
+                document.getElementById('memoryMenu').style.display = 'block';
+                document.getElementById('memoryGame').classList.add('hidden');
+                if(currentGlobalMode === 'offline') startLocalMemory();
+            }
+        }
+
+        function returnToSelection() {
+            window.isUnoOnlineMode = false;
+            window.isC4OnlineMode = false;
+            window.isRPSOnlineMode = false;
+            window.isMemoryOnlineMode = false;
+            if (peer) peer.destroy();
+            peer = null; connections = []; guestConn = null;
+            document.getElementById('privacyCurtain').classList.add('hidden');
+            document.getElementById('authPage').classList.add('hidden');
+            document.getElementById('leaderboardPage').classList.add('hidden');
+            openGameSelectionPage(currentGlobalMode);
+        }
+
+        function updatePlayerSliderLabel(val) {
+            document.getElementById('playerCountLabel').innerText = val;
+        }
+
+        function runAutoBackgroundCycle() {
+            if (!document.getElementById('ticTacToePage').classList.contains('hidden') || !document.getElementById('unoPage').classList.contains('hidden') || !document.getElementById('selectionPage').classList.contains('hidden')) return;
+            alternateCycleIndex = (alternateCycleIndex + 1) % homeThemes.length;
+            const state = homeThemes[alternateCycleIndex];
+            const body = document.getElementById('bg-wrapper');
+            const title = document.getElementById('game-title');
+            const desc = document.getElementById('game-desc');
+            const badge = document.getElementById('featured-badge');
+            const cardAsset = document.getElementById('card-preview');
+            const gridAsset = document.getElementById('grid-preview');
+            
+            if(document.getElementById('homePage').classList.contains('hidden') === false) {
+                body.className = `theme-transition min-h-screen flex flex-col justify-between text-white font-sans bg-gradient-to-br ${state.bg} selection:bg-black selection:text-white`;
+            }
+            if(title) title.innerText = state.title;
+            if(desc) desc.innerText = state.desc;
+            if(badge) badge.innerText = state.badge;
+            if(badge) badge.className = `text-xs uppercase font-extrabold tracking-widest px-3 py-1 rounded-full border inline-block transition-all duration-500 ${state.badgeClass}`;
+            
+            if (alternateCycleIndex === 0) {
+                if(cardAsset) cardAsset.className = cardAsset.className.replace('opacity-0', 'opacity-100').replace('scale-75', 'scale-100').replace('z-0', 'z-10');
+                if(gridAsset) gridAsset.className = gridAsset.className.replace('opacity-100', 'opacity-0').replace('scale-100', 'scale-75').replace('z-10', 'z-0');
+            } else {
+                if(gridAsset) gridAsset.className = gridAsset.className.replace('opacity-0', 'opacity-100').replace('scale-75', 'scale-100').replace('z-0', 'z-10');
+                if(cardAsset) cardAsset.className = cardAsset.className.replace('opacity-100', 'opacity-0').replace('scale-100', 'scale-75').replace('z-10', 'z-0');
+            }
+        }
+        setInterval(runAutoBackgroundCycle, 6000);
+
+        function startLocalTTT() {
+            isLocalMode = true;
+            roomId = '';
+            firstPlayer = 'X'; 
+            playerSymbol = firstPlayer;
+            currentBoard = Array(9).fill('');
+            roomCodeText.innerText = 'Local Match Active';
+            document.getElementById('menu').style.display = 'none';
+            document.getElementById('scoreboard').classList.remove('hidden');
+            document.getElementById('board').classList.remove('hidden');
+            statusText.innerText = ` 🔥  Player ${playerSymbol}'s Turn!`;
+            createBoard();
+        }
+
+        function updateScoreboard(winner) {
+            if (winner === 'X') scores.X++;
+            else if (winner === 'O') scores.O++;
+            else scores.Draw++;
+            
+            const targetEl = winner === 'X' ? scoreXEl : (winner === 'O' ? scoreOEl : scoreDrawEl);
+            targetEl.innerText = scores[winner || 'Draw'];
+            
+            targetEl.classList.add('pop-anim');
+            setTimeout(() => targetEl.classList.remove('pop-anim'), 500);
+        }
+
+        function createBoard() {
+            boardElement.innerHTML = '';
+            currentBoard.forEach((cell, index) => {
+                const div = document.createElement('div');
+                div.className = 'aspect-square text-5xl font-black rounded-2xl bg-slate-900/60 border border-white/10 flex items-center justify-center cursor-pointer transition-all duration-200 cell-hover shadow-lg select-none';
+                if(cell === 'X') div.classList.add('text-amber-400');
+                if(cell === 'O') div.classList.add('text-cyan-400');
+                div.innerText = cell;
+                div.onclick = () => makeMove(index);
+                boardElement.appendChild(div);
+            });
+        }
+
+        function generateCode() { return Math.random().toString(36).substring(2,8).toUpperCase(); }
+
+        async function createRoom() {
+            isLocalMode = false;
+            roomId = await initNetwork('host');
+            playerSymbol = 'X';
+            roomCodeText.innerText = 'Lobby ID: ' + roomId;
+            document.getElementById('menu').style.display = 'none';
+            document.getElementById('scoreboard').classList.remove('hidden');
+            document.getElementById('board').classList.remove('hidden');
+            
+            currentBoard = Array(9).fill('');
+            currentTurn = 'X';
+
+            networkCallbacks.onPlayerJoined = (conn) => {
+                broadcast({ type: 'ttt_sync', board: currentBoard, turn: currentTurn, scores: scores });
+            };
+
+            networkCallbacks.onData = (data) => {
+                if (data.type === 'ttt_move') {
+                    applyTTTMove(data.index, 'O');
+                }
+            };
+
+            statusText.innerText = " ⏳  Waiting for Player O...";
+            createBoard();
+        }
+
+        async function joinRoom(code) {
+            isLocalMode = false;
+            const inputVal = code || document.getElementById('roomInput').value;
+            if(!inputVal) return alert('Please key in a direct lobby validation code token.');
+            roomId = inputVal.toUpperCase();
+            playerSymbol = 'O';
+            
+            await initNetwork('guest', roomId);
+            
+            roomCodeText.innerText = 'Connected: ' + roomId;
+            document.getElementById('menu').style.display = 'none';
+            document.getElementById('scoreboard').classList.remove('hidden');
+            document.getElementById('board').classList.remove('hidden');
+
+            networkCallbacks.onData = (data) => {
+                if (data.type === 'ttt_sync') {
+                    currentBoard = data.board;
+                    currentTurn = data.turn;
+                    scores = data.scores;
+                    updateScoreboardUI();
+                    createBoard();
+                    updateTTTStatus();
+                }
+            };
+        }
+
+        function updateScoreboardUI() {
+            scoreXEl.innerText = scores.X;
+            scoreOEl.innerText = scores.O;
+            scoreDrawEl.innerText = scores.Draw;
+        }
+
+        function updateTTTStatus() {
+            if (currentTurn === playerSymbol) {
+                statusText.innerText = ' 🔥  Your Move Action Turn!';
+            } else {
+                statusText.innerText = ' ⏳  Waiting on Opponent Response...';
+            }
+        }
+
+        function joinRandomTTT() {
+            alert("Random lobby requires a signaling server. Use a direct code for now!");
+        }
+
+        function isLinePossible(combo) {
+            let hasX = combo.some(i => currentBoard[i] === 'X');
+            let hasO = combo.some(i => currentBoard[i] === 'O');
+            return !(hasX && hasO);
+        }
+
+        function makeMove(index) {
+            if(currentBoard[index] !== '') return;
+            
+            if (isLocalMode) {
+                applyTTTMove(index, playerSymbol);
+            } else {
+                if (currentTurn !== playerSymbol) return;
+                if (isHost) {
+                    applyTTTMove(index, 'X');
+                } else {
+                    broadcast({ type: 'ttt_move', index: index });
+                }
+            }
+        }
+
+        function applyTTTMove(index, symbol) {
+            currentBoard[index] = symbol;
+            const winner = checkWinner();
+            createBoard();
+            
+            if (winner) {
+                updateScoreboard(winner);
+                statusText.innerText = winner === 'Draw' ? " 🤝  Match Stalemate (Draw)!" : ` 🎉  Victory: ${winner}!`;
+                
+                setTimeout(() => {
+                    currentBoard = Array(9).fill('');
+                    firstPlayer = (firstPlayer === 'X') ? 'O' : 'X';
+                    currentTurn = firstPlayer;
+                    if (isLocalMode) playerSymbol = firstPlayer;
+                    
+                    if (!isLocalMode && isHost) {
+                        broadcast({ type: 'ttt_sync', board: currentBoard, turn: currentTurn, scores: scores });
+                    }
+                    
+                    statusText.innerText = isLocalMode ? ` 🔥  Player ${playerSymbol}'s Turn!` : updateTTTStatus();
+                    createBoard();
+                }, 1500);
+            } else {
+                currentTurn = currentTurn === 'X' ? 'O' : 'X';
+                if (isLocalMode) playerSymbol = currentTurn;
+                
+                if (!isLocalMode && isHost) {
+                    broadcast({ type: 'ttt_sync', board: currentBoard, turn: currentTurn, scores: scores });
+                }
+                
+                if (isLocalMode) {
+                    statusText.innerText = ` 🔥  Player ${playerSymbol}'s Turn!`;
+                } else {
+                    updateTTTStatus();
+                }
+            }
+        }
+
+        function checkWinner() {
+            const wins = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+            for(let combo of wins) {
+                const [a,b,c] = combo;
+                if(currentBoard[a] && currentBoard[a] === currentBoard[b] && currentBoard[a] === currentBoard[c]) {
+                    return currentBoard[a];
+                }
+            }
+            if (!wins.some(combo => isLinePossible(combo))) return 'Draw';
+            if(!currentBoard.includes('')) return 'Draw';
+            return null;
+        }
+
+        const unoGame = { players: [], currentPlayer: 0, deck: [], discard: [], direction: 1, colors: ['Red','Blue','Green','Yellow'], playerNames: [] };
+        
+        function createUnoDeck() {
+            const deck = [];
+            unoGame.colors.forEach(color => {
+                for(let i=0; i<=9; i++) {
+                    deck.push({color, value:i});
+                    if(i!==0) deck.push({color, value:i});
+                }
+                ['Skip','Reverse','+2'].forEach(action => {
+                    deck.push({color, value:action});
+                    deck.push({color, value:action});
+                });
+            });
+            for(let i=0; i<6; i++) {
+                deck.push({color:'Wild', value:'Wild'});
+                deck.push({color:'Wild', value:'+4'});
+            }
+            return deck.sort(() => Math.random() - 0.5);
+        }
+
+        function startUno(playerCount=4) {
+            unoPlayerCount = playerCount;
+            window.isUnoOnlineMode = false;
+            unoGame.deck = createUnoDeck();
+            unoGame.players = [];
+            unoGame.currentPlayer = 0;
+            unoGame.discard = [];
+            unoGame.direction = 1;
+            for(let i=0; i<playerCount; i++) {
+                const hand = [];
+                for(let j=0; j<7; j++) { hand.push(unoGame.deck.pop()); }
+                unoGame.players.push(hand);
+            }
+            unoGame.discard.push(unoGame.deck.pop());
+            document.getElementById('unoSetup').style.display = 'none';
+            document.getElementById('unoActiveGame').classList.remove('hidden');
+            triggerTurnPrivacyScreen();
+        }
+
+        function triggerTurnPrivacyScreen() {
+            if (window.isUnoOnlineMode) { renderUno(); return; }
+            const curtain = document.getElementById('privacyCurtain');
+            const labelText = document.getElementById('privacyCurtainTargetText');
+            labelText.innerText = ` 🎲  Player ${unoGame.currentPlayer + 1}'s Turn`;
+            curtain.classList.remove('hidden');
+        }
+
+        function liftPrivacyCurtain() {
+            document.getElementById('privacyCurtain').classList.add('hidden');
+            renderUno();
+        }
+
+        function renderUno() {
+            const top = unoGame.discard[unoGame.discard.length - 1];
+            const myIndex = window.isUnoOnlineMode ? unoOnlinePlayerIndex : unoGame.currentPlayer;
+            
+            if (window.isUnoOnlineMode) {
+                const activeName = unoGame.playerNames[unoGame.currentPlayer] || `Player ${unoGame.currentPlayer + 1}`;
+                document.getElementById('unoCurrentPlayerDisplay').innerText = (myIndex === unoGame.currentPlayer) ? " 🔥  YOUR TURN!" : ` ⏳  ${activeName}'s Turn`;
+            } else {
+                document.getElementById('unoCurrentPlayerDisplay').innerText = `Player ${unoGame.currentPlayer + 1}`;
+            }
+            
+            renderTopCardVisual('topCardPile', 'topCardValLeft', 'topCardCenter', 'topCardValRight', top);
+            
+            const handContainer = document.getElementById('unoHand');
+            handContainer.innerHTML = '';
+            
+            const currentHand = unoGame.players[myIndex];
+            if (!currentHand) return;
+
+            currentHand.forEach((card, index) => {
+                const cardBtn = document.createElement('button');
+                cardBtn.style.display = "flex";
+                setupRealisticCardVisuals(cardBtn, card);
+                cardBtn.onclick = () => {
+                    if (window.isUnoOnlineMode && unoGame.currentPlayer !== myIndex) return alert("Wait for your turn!");
+                    playUnoCard(index);
+                };
+                handContainer.appendChild(cardBtn);
+            });
+        }
+
+        function renderTopCardVisual(pileId, leftId, centerId, rightId, card) {
+            const pile = document.getElementById(pileId);
+            const left = document.getElementById(leftId);
+            const center = document.getElementById(centerId);
+            const right = document.getElementById(rightId);
+            
+            const isLong = card.value.toString().length > 2;
+            const fontClass = isLong ? "text-lg" : "text-3xl";
+            
+            left.innerText = card.value;
+            right.innerText = card.value;
+            center.innerText = card.value;
+            
+            center.className = `text-center font-extrabold tracking-tighter text-red-600 transform rotate-[20deg] ${fontClass}`;
+            
+            pile.className = "w-32 h-48 rounded-2xl border-4 border-white shadow-2xl p-4 text-white font-black flex flex-col justify-between transition-all relative overflow-hidden bg-gradient-to-br";
+            
+            if(card.color==='Red') pile.classList.add('from-red-500', 'to-red-700');
+            if(card.color==='Blue') pile.classList.add('from-blue-500', 'to-blue-700');
+            if(card.color==='Green') pile.classList.add('from-emerald-500', 'to-emerald-700');
+            if(card.color==='Yellow') pile.classList.add('from-yellow-400', 'to-yellow-600', 'text-black');
+            if(card.color==='Wild') pile.classList.add('from-gray-800', 'to-black', 'border-amber-400');
+        }
+
+        function setupRealisticCardVisuals(btn, card) {
+            btn.innerHTML = ''; 
+            btn.className = "w-28 h-40 rounded-2xl font-black border-2 border-white shadow-xl flex flex-col justify-between p-3 hover:scale-110 hover:-translate-y-4 transition-all duration-200 cursor-pointer select-none text-left relative overflow-hidden bg-gradient-to-br";
+            
+            const gradients = {
+                'Red': 'from-red-500 to-red-700',
+                'Blue': 'from-blue-500 to-blue-700',
+                'Green': 'from-emerald-500 to-emerald-700',
+                'Yellow': 'from-yellow-400 to-yellow-600',
+                'Wild': 'from-gray-800 to-black'
+            };
+            
+            const colorClass = gradients[card.color] || 'from-gray-500 to-gray-700';
+            btn.classList.add(...colorClass.split(' '));
+            
+            const isAction = card.value.toString().length > 2;
+            const textClass = isAction ? "text-xs" : "text-xl";
+            const ovalClass = isAction ? "text-lg" : "text-2xl";
+            
+            const leftVal = document.createElement('div');
+            leftVal.className = `text-left ${textClass} text-white drop-shadow-md`;
+            leftVal.innerText = card.value;
+            
+            const centerOval = document.createElement('div');
+            centerOval.className = `w-16 h-16 bg-white/20 rounded-full flex items-center justify-center self-center my-auto shadow-inner border border-white/30 backdrop-blur-sm ${ovalClass} text-white`;
+            centerOval.innerText = card.value;
+            
+            const rightVal = document.createElement('div');
+            rightVal.className = `text-right ${textClass} rotate-180 text-white drop-shadow-md`;
+            rightVal.innerText = card.value;
+            
+            btn.appendChild(leftVal);
+            btn.appendChild(centerOval);
+            btn.appendChild(rightVal);
+        }
+
+        function playUnoCard(index) {
+            const activeIdx = window.isUnoOnlineMode ? unoOnlinePlayerIndex : unoGame.currentPlayer;
+            const playerHand = unoGame.players[activeIdx];
+            const card = playerHand[index];
+            const top = unoGame.discard[unoGame.discard.length-1];
+            
+            if(card.color===top.color || card.value===top.value || card.color==='Wild') {
+                if (window.isUnoOnlineMode) {
+                    broadcast({ type: 'uno_action', action: 'play', index: index, playerIdx: activeIdx });
+                } else {
+                    applyUnoAction('play', index, activeIdx);
+                }
+            } else {
+                showError();
+            }
+        }
+
+        function applyUnoAction(action, data, playerIdx) {
+            if (action === 'play') {
+                const card = unoGame.players[playerIdx][data];
+                unoGame.discard.push(card);
+                unoGame.players[playerIdx].splice(data, 1);
+                
+                if (unoGame.players[playerIdx].length === 0) {
+                    showWinnerScreen(`${unoGame.playerNames[playerIdx] || 'Player ' + (playerIdx + 1)} Wins!`);
+                    if (window.isUnoOnlineMode && isHost) broadcast({ type: 'uno_sync', game: unoGame, winner: playerIdx });
+                    return;
+                }
+                
+                handleUnoAction(card);
+                nextUnoPlayer();
+            } else if (action === 'draw') {
+                if (unoGame.deck.length === 0) unoGame.deck = createUnoDeck();
+                unoGame.players[playerIdx].push(unoGame.deck.pop());
+                nextUnoPlayer();
+            }
+
+            if (window.isUnoOnlineMode && isHost) {
+                broadcast({ type: 'uno_sync', game: unoGame });
+            }
+
+            if (!window.isUnoOnlineMode) {
+                triggerTurnPrivacyScreen();
+            } else {
+                renderUno();
+            }
+        }
+
+        function handleUnoAction(card, triggerAnim = true) {
+            if(card.value==='Reverse') {
+                unoGame.direction *= -1;
+                if(triggerAnim) triggerActionToast("REVERSE!", "text-cyan-400");
+            }
+            if(card.value==='Skip') {
+                nextUnoPlayer();
+                if(triggerAnim) triggerActionToast("SKIP!", "text-yellow-400");
+            }
+            if(card.value==='+2' || card.value==='+4') {
+                let cardsToDraw = card.value === '+2' ? 2 : 4;
+                const next = (unoGame.currentPlayer + unoGame.direction + unoGame.players.length) % unoGame.players.length;
+                for(let i=0; i<cardsToDraw; i++) {
+                    if(unoGame.deck.length > 0) unoGame.players[next].push(unoGame.deck.pop());
+                }
+                if(triggerAnim) triggerActionToast(`${card.value} DRAW!`, "text-red-500");
+            }
+        }
+
+        function drawUnoCard() {
+            const activeIdx = window.isUnoOnlineMode ? unoOnlinePlayerIndex : unoGame.currentPlayer;
+            if (window.isUnoOnlineMode) {
+                broadcast({ type: 'uno_action', action: 'draw', playerIdx: activeIdx });
+            } else {
+                applyUnoAction('draw', null, activeIdx);
+            }
+        }
+
+        function nextUnoPlayer() {
+            unoGame.currentPlayer = (unoGame.currentPlayer + unoGame.direction + unoGame.players.length) % unoGame.players.length;
+        }
+
+        let unoOnlinePlayerIndex = 0;
+        window.isUnoOnlineMode = false;
+
+        async function createUnoOnlineRoom() {
+            const nickname = document.getElementById('unoPlayerName').value || 'Host';
+            window.isUnoOnlineMode = true;
+            unoOnlinePlayerIndex = 0;
+            
+            roomId = await initNetwork('host');
+            
+            unoGame.deck = createUnoDeck();
+            unoGame.players = [[]]; // Host's hand
+            unoGame.playerNames = [nickname];
+            unoGame.currentPlayer = 0;
+            unoGame.discard = [];
+            unoGame.direction = 1;
+
+            // Deal host's hand
+            for(let j=0; j<7; j++) { unoGame.players[0].push(unoGame.deck.pop()); }
+            unoGame.discard.push(unoGame.deck.pop());
+
+            document.getElementById('unoRoomCodeDisplay').innerText = `ROOM ID: ${roomId}`;
+            document.getElementById('unoLobbyStatus').innerText = ' ⏳  Waiting for Players...';
+
+            networkCallbacks.onPlayerJoined = (conn) => {
+                const newIdx = unoGame.players.length;
+                unoGame.players.push([]);
+                unoGame.playerNames.push("Guest " + newIdx);
+                for(let j=0; j<7; j++) { unoGame.players[newIdx].push(unoGame.deck.pop()); }
+                
+                broadcast({ type: 'uno_sync', game: unoGame, playerIndex: newIdx });
+                document.getElementById('unoLobbyStatus').innerText = `Players: ${unoGame.players.length}`;
+            };
+
+            networkCallbacks.onData = (data, conn) => {
+                if (data.type === 'uno_action') {
+                    applyUnoAction(data.action, data.index, data.playerIdx);
+                }
+                if (data.type === 'uno_join_name') {
+                    // Update name
+                    const idx = connections.indexOf(conn) + 1;
+                    unoGame.playerNames[idx] = data.name;
+                    broadcast({ type: 'uno_sync', game: unoGame });
+                }
+            };
+
+            document.getElementById('unoSetup').classList.add('hidden');
+            document.getElementById('unoActiveGame').classList.remove('hidden');
+            renderUno();
+        }
+
+        async function joinUnoOnlineRoom(code) {
+            const codeInput = code || document.getElementById('unoRoomInput').value.toUpperCase();
+            const nickname = document.getElementById('unoPlayerName').value || 'Guest';
+            if(!codeInput) return alert('Enter a room code!');
+            
+            window.isUnoOnlineMode = true;
+            roomId = codeInput;
+
+            await initNetwork('guest', roomId);
+            
+            document.getElementById('unoRoomCodeDisplay').innerText = `CONNECTED: ${roomId}`;
+            broadcast({ type: 'uno_join_name', name: nickname });
+
+            networkCallbacks.onData = (data) => {
+                if (data.type === 'uno_sync') {
+                    if (data.playerIndex !== undefined && unoOnlinePlayerIndex === 0) {
+                        unoOnlinePlayerIndex = data.playerIndex;
+                    }
+                    Object.assign(unoGame, data.game);
+                    if (data.winner !== undefined) showWinnerScreen(`${unoGame.playerNames[data.winner]} Wins!`);
+                    
+                    document.getElementById('unoSetup').classList.add('hidden');
+                    document.getElementById('unoActiveGame').classList.remove('hidden');
+                    renderUno();
+                }
+            };
+        }
+
+        function joinRandomUno() {
+            alert("Random lobby requires a signaling server. Use a direct code for now!");
+        }
+
+        // --- CONNECT FOUR LOGIC ---
+        let c4Board = [];
+        let c4Turn = 'red';
+        window.isC4OnlineMode = false;
+        let c4PlayerSymbol = 'red';
+
+        function startLocalC4() {
+            isLocalMode = true;
+            window.isC4OnlineMode = false;
+            c4Board = Array(6).fill(null).map(() => Array(7).fill(null));
+            c4Turn = 'red';
+            c4PlayerSymbol = 'red';
+            document.getElementById('c4Menu').style.display = 'none';
+            document.getElementById('c4Game').classList.remove('hidden');
+            document.getElementById('c4RoomCode').innerText = 'Local Match';
+            renderC4();
+            updateC4Status();
+        }
+
+        async function createC4Room() {
+            isLocalMode = false;
+            window.isC4OnlineMode = true;
+            c4PlayerSymbol = 'red';
+            roomId = await initNetwork('host');
+            document.getElementById('c4RoomCode').innerText = 'Room: ' + roomId;
+            document.getElementById('c4Menu').style.display = 'none';
+            document.getElementById('c4Game').classList.remove('hidden');
+            
+            c4Board = Array(6).fill(null).map(() => Array(7).fill(null));
+            c4Turn = 'red';
+            
+            networkCallbacks.onPlayerJoined = () => {
+                broadcast({ type: 'c4_sync', board: c4Board, turn: c4Turn });
+            };
+            networkCallbacks.onData = (data) => {
+                if (data.type === 'c4_move') applyC4Move(data.col, 'yellow');
+            };
+            
+            renderC4();
+            updateC4Status();
+        }
+
+        async function joinC4Room() {
+            const code = document.getElementById('c4RoomInput').value.toUpperCase();
+            if (!code) return alert("Enter Room Code");
+            isLocalMode = false;
+            window.isC4OnlineMode = true;
+            c4PlayerSymbol = 'yellow';
+            roomId = await initNetwork('guest', code);
+            document.getElementById('c4RoomCode').innerText = 'Connected: ' + roomId;
+            document.getElementById('c4Menu').style.display = 'none';
+            document.getElementById('c4Game').classList.remove('hidden');
+            
+            networkCallbacks.onData = (data) => {
+                if (data.type === 'c4_sync') {
+                    c4Board = data.board;
+                    c4Turn = data.turn;
+                    renderC4();
+                    updateC4Status();
+                }
+            };
+        }
+
+        function renderC4() {
+            const boardEl = document.getElementById('c4Board');
+            boardEl.innerHTML = '';
+            for (let r = 0; r < 6; r++) {
+                for (let c = 0; c < 7; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'w-12 h-12 md:w-16 md:h-16 bg-blue-800 rounded-full border-4 border-blue-900 shadow-inner flex items-center justify-center cursor-pointer transition-transform hover:scale-105';
+                    if (c4Board[r][c] === 'red') cell.innerHTML = '<div class="w-10 h-10 md:w-14 md:h-14 bg-red-500 rounded-full shadow-lg"></div>';
+                    if (c4Board[r][c] === 'yellow') cell.innerHTML = '<div class="w-10 h-10 md:w-14 md:h-14 bg-yellow-400 rounded-full shadow-lg"></div>';
+                    cell.onclick = () => dropToken(c);
+                    boardEl.appendChild(cell);
+                }
+            }
+        }
+
+        function dropToken(col) {
+            if (window.isC4OnlineMode && c4Turn !== c4PlayerSymbol) return;
+            
+            let row = -1;
+            for (let r = 5; r >= 0; r--) {
+                if (!c4Board[r][col]) { row = r; break; }
+            }
+            if (row === -1) return;
+
+            if (window.isC4OnlineMode) {
+                if (isHost) applyC4Move(col, 'red');
+                else broadcast({ type: 'c4_move', col: col });
+            } else {
+                applyC4Move(col, c4Turn);
+            }
+        }
+
+        function applyC4Move(col, symbol) {
+            let row = -1;
+            for (let r = 5; r >= 0; r--) {
+                if (!c4Board[r][col]) { row = r; break; }
+            }
+            c4Board[row][col] = symbol;
+            renderC4();
+            
+            const winner = checkC4Winner();
+            if (winner) {
+                showWinnerScreen(winner === 'draw' ? "Match Draw!" : `${winner.toUpperCase()} Wins!`);
+                if (isHost) broadcast({ type: 'c4_sync', board: c4Board, turn: c4Turn });
+                return;
+            }
+            
+            c4Turn = (c4Turn === 'red') ? 'yellow' : 'red';
+            if (isHost) broadcast({ type: 'c4_sync', board: c4Board, turn: c4Turn });
+            updateC4Status();
+        }
+
+        function updateC4Status() {
+            const el = document.getElementById('c4Status');
+            if (window.isC4OnlineMode) {
+                el.innerText = (c4Turn === c4PlayerSymbol) ? "Your Turn!" : "Waiting for Opponent...";
+            } else {
+                el.innerText = `${c4Turn.toUpperCase()}'s Turn`;
+            }
+            el.className = `status my-2 text-lg font-bold tracking-wide ${c4Turn === 'red' ? 'text-red-500' : 'text-yellow-400'}`;
+        }
+
+        function checkC4Winner() {
+            // Horizontal
+            for (let r = 0; r < 6; r++) {
+                for (let c = 0; c < 4; c++) {
+                    if (c4Board[r][c] && c4Board[r][c] === c4Board[r][c+1] && c4Board[r][c] === c4Board[r][c+2] && c4Board[r][c] === c4Board[r][c+3]) return c4Board[r][c];
+                }
+            }
+            // Vertical
+            for (let r = 0; r < 3; r++) {
+                for (let c = 0; c < 7; c++) {
+                    if (c4Board[r][c] && c4Board[r][c] === c4Board[r+1][c] && c4Board[r][c] === c4Board[r+2][c] && c4Board[r][c] === c4Board[r+3][c]) return c4Board[r][c];
+                }
+            }
+            // Diagonal
+            for (let r = 0; r < 3; r++) {
+                for (let c = 0; c < 4; c++) {
+                    if (c4Board[r][c] && c4Board[r][c] === c4Board[r+1][c+1] && c4Board[r][c] === c4Board[r+2][c+2] && c4Board[r][c] === c4Board[r+3][c+3]) return c4Board[r][c];
+                }
+            }
+            for (let r = 3; r < 6; r++) {
+                for (let c = 0; c < 4; c++) {
+                    if (c4Board[r][c] && c4Board[r][c] === c4Board[r-1][c+1] && c4Board[r][c] === c4Board[r-2][c+2] && c4Board[r][c] === c4Board[r-3][c+3]) return c4Board[r][c];
+                }
+            }
+            if (!c4Board.flat().includes(null)) return 'draw';
+            return null;
+        }
+
+        // --- ROCK PAPER SCISSORS LOGIC ---
+        let rpsChoices = { player1: null, player2: null };
+        window.isRPSOnlineMode = false;
+
+        function startLocalRPS() {
+            isLocalMode = true;
+            window.isRPSOnlineMode = false;
+            rpsChoices = { player1: null, player2: null };
+            document.getElementById('rpsMenu').style.display = 'none';
+            document.getElementById('rpsGame').classList.remove('hidden');
+            document.getElementById('rpsStatus').innerText = "Player 1 Choice";
+        }
+
+        async function createRPSRoom() {
+            isLocalMode = false;
+            window.isRPSOnlineMode = true;
+            roomId = await initNetwork('host');
+            document.getElementById('rpsMenu').style.display = 'none';
+            document.getElementById('rpsGame').classList.remove('hidden');
+            document.getElementById('rpsStatus').innerText = "Waiting for Opponent...";
+            
+            networkCallbacks.onData = (data) => {
+                if (data.type === 'rps_choice') {
+                    rpsChoices.player2 = data.choice;
+                    if (rpsChoices.player1) resolveRPS();
+                }
+            };
+        }
+
+        async function joinRPSRoom() {
+            const code = document.getElementById('rpsRoomInput').value.toUpperCase();
+            if (!code) return alert("Enter Room Code");
+            isLocalMode = false;
+            window.isRPSOnlineMode = true;
+            roomId = await initNetwork('guest', code);
+            document.getElementById('rpsMenu').style.display = 'none';
+            document.getElementById('rpsGame').classList.remove('hidden');
+            
+            networkCallbacks.onData = (data) => {
+                if (data.type === 'rps_result') {
+                    displayRPSResult(data.c1, data.c2, data.winner);
+                }
+            };
+        }
+
+        function playRPS(choice) {
+            if (window.isRPSOnlineMode) {
+                if (isHost) {
+                    rpsChoices.player1 = choice;
+                    if (rpsChoices.player2) resolveRPS();
+                    else document.getElementById('rpsStatus').innerText = "Waiting for Guest...";
+                } else {
+                    broadcast({ type: 'rps_choice', choice: choice });
+                    document.getElementById('rpsStatus').innerText = "Waiting for Host...";
+                }
+                document.getElementById('rpsChoices').classList.add('hidden');
+            } else {
+                if (!rpsChoices.player1) {
+                    rpsChoices.player1 = choice;
+                    document.getElementById('rpsStatus').innerText = "Player 2 Choice";
+                    triggerTurnPrivacyScreenRPS();
+                } else {
+                    rpsChoices.player2 = choice;
+                    resolveRPS();
+                }
+            }
+        }
+
+        function triggerTurnPrivacyScreenRPS() {
+            const curtain = document.getElementById('privacyCurtain');
+            document.getElementById('privacyCurtainTargetText').innerText = "Player 2's Turn";
+            curtain.classList.remove('hidden');
+        }
+
+        function resolveRPS() {
+            const c1 = rpsChoices.player1;
+            const c2 = rpsChoices.player2;
+            let winner = '';
+            if (c1 === c2) winner = 'draw';
+            else if ((c1==='rock'&&c2==='scissors') || (c1==='paper'&&c2==='rock') || (c1==='scissors'&&c2==='paper')) winner = 'p1';
+            else winner = 'p2';
+
+            if (window.isRPSOnlineMode && isHost) {
+                broadcast({ type: 'rps_result', c1, c2, winner });
+            }
+            displayRPSResult(c1, c2, winner);
+        }
+
+        function displayRPSResult(c1, c2, winner) {
+            const myChoice = isHost || !window.isRPSOnlineMode ? c1 : c2;
+            const opChoice = isHost || !window.isRPSOnlineMode ? c2 : c1;
+            const icons = { rock: '✊', paper: '✋', scissors: '✌️' };
+            
+            document.getElementById('myRPSResult').innerText = icons[myChoice];
+            document.getElementById('opponentRPSResult').innerText = icons[opChoice];
+            document.getElementById('rpsArena').classList.remove('opacity-0');
+            document.getElementById('rpsChoices').classList.add('hidden');
+            
+            let winText = '';
+            if (winner === 'draw') winText = "🤝 IT'S A DRAW!";
+            else if ((winner === 'p1' && (isHost || !window.isRPSOnlineMode)) || (winner === 'p2' && !isHost && window.isRPSOnlineMode)) winText = "🎉 YOU WIN!";
+            else winText = "💀 YOU LOSE!";
+            
+            document.getElementById('rpsStatus').innerText = winText;
+            
+            setTimeout(() => {
+                if (isLocalMode) {
+                    rpsChoices = { player1: null, player2: null };
+                    document.getElementById('rpsChoices').classList.remove('hidden');
+                    document.getElementById('rpsArena').classList.add('opacity-0');
+                    document.getElementById('rpsStatus').innerText = "Player 1 Choice";
+                } else if (isHost) {
+                    rpsChoices = { player1: null, player2: null };
+                    document.getElementById('rpsChoices').classList.remove('hidden');
+                    document.getElementById('rpsArena').classList.add('opacity-0');
+                    document.getElementById('rpsStatus').innerText = "Choose Your Weapon";
+                }
+            }, 3000);
+        }
+
+        // --- MEMORY MATCH LOGIC ---
+        let memoryCards = [];
+        let memoryFlipped = [];
+        let memoryScores = [0, 0];
+        let memoryTurn = 0;
+        let memoryLocked = false;
+        window.isMemoryOnlineMode = false;
+
+        function startLocalMemory() {
+            isLocalMode = true;
+            window.isMemoryOnlineMode = false;
+            initMemoryGame();
+            document.getElementById('memoryMenu').style.display = 'none';
+            document.getElementById('memoryGame').classList.remove('hidden');
+        }
+
+        async function createMemoryRoom() {
+            isLocalMode = false;
+            window.isMemoryOnlineMode = true;
+            roomId = await initNetwork('host');
+            initMemoryGame();
+            document.getElementById('memoryMenu').style.display = 'none';
+            document.getElementById('memoryGame').classList.remove('hidden');
+            
+            networkCallbacks.onPlayerJoined = () => {
+                broadcast({ type: 'memory_sync', cards: memoryCards, scores: memoryScores, turn: memoryTurn });
+            };
+            networkCallbacks.onData = (data) => {
+                if (data.type === 'memory_flip') applyMemoryFlip(data.index);
+            };
+        }
+
+        async function joinMemoryRoom() {
+            const code = document.getElementById('memoryRoomInput').value.toUpperCase();
+            if (!code) return alert("Enter Room Code");
+            isLocalMode = false;
+            window.isMemoryOnlineMode = true;
+            roomId = await initNetwork('guest', code);
+            document.getElementById('memoryMenu').style.display = 'none';
+            document.getElementById('memoryGame').classList.remove('hidden');
+            
+            networkCallbacks.onData = (data) => {
+                if (data.type === 'memory_sync') {
+                    memoryCards = data.cards;
+                    memoryScores = data.scores;
+                    memoryTurn = data.turn;
+                    renderMemory();
+                }
+            };
+        }
+
+        function initMemoryGame() {
+            const icons = ['🔥','💧','⚡','🌿','🌑','☀️','🌈','🌀'];
+            const deck = [...icons, ...icons].sort(() => Math.random() - 0.5);
+            memoryCards = deck.map(icon => ({ icon, flipped: false, matched: false }));
+            memoryScores = [0, 0];
+            memoryTurn = 0;
+            memoryFlipped = [];
+            renderMemory();
+        }
+
+        function renderMemory() {
+            const board = document.getElementById('memoryBoard');
+            board.innerHTML = '';
+            memoryCards.forEach((card, i) => {
+                const el = document.createElement('div');
+                el.className = `h-20 md:h-24 rounded-xl border-2 border-white/20 flex items-center justify-center text-3xl cursor-pointer transition-all ${card.flipped || card.matched ? 'bg-white/10 rotate-y-180' : 'bg-neutral-800'}`;
+                el.innerText = (card.flipped || card.matched) ? card.icon : '?';
+                el.onclick = () => flipMemoryCard(i);
+                board.appendChild(el);
+            });
+            document.getElementById('memoryScore1').innerText = memoryScores[0];
+            document.getElementById('memoryScore2').innerText = memoryScores[1];
+            const myTurn = (window.isMemoryOnlineMode) ? (memoryTurn === (isHost ? 0 : 1)) : true;
+            document.getElementById('memoryStatus').innerText = myTurn ? "Your Turn" : "Opponent's Turn";
+        }
+
+        function flipMemoryCard(i) {
+            if (memoryLocked || memoryCards[i].flipped || memoryCards[i].matched) return;
+            if (window.isMemoryOnlineMode && memoryTurn !== (isHost ? 0 : 1)) return;
+
+            if (window.isMemoryOnlineMode) {
+                if (isHost) applyMemoryFlip(i);
+                else broadcast({ type: 'memory_flip', index: i });
+            } else {
+                applyMemoryFlip(i);
+            }
+        }
+
+        function applyMemoryFlip(i) {
+            memoryCards[i].flipped = true;
+            memoryFlipped.push(i);
+            renderMemory();
+
+            if (memoryFlipped.length === 2) {
+                memoryLocked = true;
+                const [a, b] = memoryFlipped;
+                if (memoryCards[a].icon === memoryCards[b].icon) {
+                    memoryCards[a].matched = true;
+                    memoryCards[b].matched = true;
+                    memoryScores[memoryTurn]++;
+                    memoryFlipped = [];
+                    memoryLocked = false;
+                    checkMemoryWinner();
+                    if (isHost) broadcast({ type: 'memory_sync', cards: memoryCards, scores: memoryScores, turn: memoryTurn });
+                    renderMemory();
+                } else {
+                    setTimeout(() => {
+                        memoryCards[a].flipped = false;
+                        memoryCards[b].flipped = false;
+                        memoryFlipped = [];
+                        memoryTurn = memoryTurn === 0 ? 1 : 0;
+                        memoryLocked = false;
+                        if (isHost) broadcast({ type: 'memory_sync', cards: memoryCards, scores: memoryScores, turn: memoryTurn });
+                        renderMemory();
+                    }, 1000);
+                }
+            }
+        }
+
+        function checkMemoryWinner() {
+            if (memoryCards.every(c => c.matched)) {
+                const winner = memoryScores[0] > memoryScores[1] ? "Player 1" : (memoryScores[1] > memoryScores[0] ? "Player 2" : "Draw");
+                showWinnerScreen(winner === "Draw" ? "It's a Draw!" : `${winner} Wins!`);
+            }
+        }
+
+        window.goHome = goHome;
+        window.openGameSelectionPage = openGameSelectionPage;
+        window.selectGame = selectGame;
+        window.returnToSelection = returnToSelection;
+        window.updatePlayerSliderLabel = updatePlayerSliderLabel;
+        window.startLocalTTT = startLocalTTT;
+        window.createRoom = createRoom;
+        window.joinRoom = joinRoom;
+        window.joinRandomTTT = joinRandomTTT;
+        window.liftPrivacyCurtain = liftPrivacyCurtain;
+        window.drawUnoCard = drawUnoCard;
+        window.createUnoOnlineRoom = createUnoOnlineRoom;
+        window.joinUnoOnlineRoom = joinUnoOnlineRoom;
+        window.joinRandomUno = joinRandomUno;
+        window.showError = showError;
+        window.hideError = hideError;
+        window.closeWinnerScreen = closeWinnerScreen;
+        window.restartUno = restartUno;
+
+        window.makeMove = makeMove;
+        window.startUno = startUno;
+        window.playUnoCard = playUnoCard;
+        window.triggerTurnPrivacyScreen = triggerTurnPrivacyScreen;
+        window.renderUno = renderUno;
+        window.nextUnoPlayer = nextUnoPlayer;
+        window.handleUnoAction = handleUnoAction;
+
+        window.startLocalC4 = startLocalC4;
+        window.createC4Room = createC4Room;
+        window.joinC4Room = joinC4Room;
+        window.dropToken = dropToken;
+
+        window.startLocalRPS = startLocalRPS;
+        window.createRPSRoom = createRPSRoom;
+        window.joinRPSRoom = joinRPSRoom;
+        window.playRPS = playRPS;
+
+        window.startLocalMemory = startLocalMemory;
+        window.createMemoryRoom = createMemoryRoom;
+        window.joinMemoryRoom = joinMemoryRoom;
+        window.flipMemoryCard = flipMemoryCard;
+
+        function openAuthPage() {
+            document.getElementById('homePage').classList.add('hidden');
+            document.getElementById('selectionPage').classList.add('hidden');
+            document.getElementById('leaderboardPage').classList.add('hidden');
+            document.getElementById('authPage').classList.remove('hidden');
+        }
+
+        function toggleAuthMode() {
+            const isLogin = !document.getElementById('loginForm').classList.contains('hidden');
+            document.getElementById('loginForm').classList.toggle('hidden', isLogin);
+            document.getElementById('registerForm').classList.toggle('hidden', !isLogin);
+            document.getElementById('authTitle').innerText = isLogin ? "Create Account" : "Arcade Account";
+        }
+
+        async function handleLogin() {
+            const email = document.getElementById('loginEmail').value;
+            const pass = document.getElementById('loginPass').value;
+            if(!email || !pass) return alert("Please enter credentials!");
+            try {
+                await signInWithEmailAndPassword(auth, email, pass);
+                goHome();
+            } catch (err) { alert(err.message); }
+        }
+
+        async function handleRegister() {
+            const name = document.getElementById('regName').value;
+            const email = document.getElementById('regEmail').value;
+            const pass = document.getElementById('regPass').value;
+            if(!name || !email || !pass) return alert("Please fill all fields!");
+            try {
+                const res = await createUserWithEmailAndPassword(auth, email, pass);
+                await updateProfile(res.user, { displayName: name });
+                await set(ref(db, 'users/' + res.user.uid), { displayName: name, xp: 0, wins: 0 });
+                goHome();
+            } catch (err) { alert(err.message); }
+        }
+
+        function handleLogout() {
+            signOut(auth);
+            goHome();
+        }
+
+        onAuthStateChanged(auth, (user) => {
+            currentUser = user;
+            const authBtn = document.getElementById('authBtn');
+            const userProfile = document.getElementById('userProfile');
+            const nameDisplay = document.getElementById('userNameDisplay');
+            
+            if (user) {
+                if (authBtn) authBtn.classList.add('hidden');
+                if (userProfile) userProfile.classList.remove('hidden');
+                
+                const finalName = user.displayName || user.email.split('@')[0] || "Player";
+                if (nameDisplay) nameDisplay.innerText = finalName;
+                
+                // Prefill inputs
+                ['playerName', 'unoPlayerName', 'c4PlayerName', 'rpsPlayerName', 'memoryPlayerName'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.value = finalName;
+                });
+            } else {
+                if (authBtn) authBtn.classList.remove('hidden');
+                if (userProfile) userProfile.classList.add('hidden');
+            }
+        });
+
+        // --- REAL-TIME HOMEPAGE LOGIC ---
+        function initRealTimeHomepage() {
+            // 1. Listen for ALL user updates to calc stats
+            onValue(ref(db, 'users'), (snapshot) => {
+                const users = snapshot.val() || {};
+                const userList = Object.values(users);
+                
+                // Stats
+                document.getElementById('statPlayers').innerText = userList.length + "+";
+                
+                const totalWins = userList.reduce((acc, u) => acc + (u.wins || 0), 0);
+                document.getElementById('statWins').innerText = totalWins + "+";
+                
+                const totalXP = userList.reduce((acc, u) => acc + (u.xp || 0), 0);
+                document.getElementById('statXP').innerText = (totalXP > 1000 ? (totalXP/1000).toFixed(1) + "k" : totalXP);
+
+                // 2. Recent Champions Feed (Top 5 most recent with wins > 0)
+                // We'll sort by a timestamp if we had one, but since we don't, 
+                // we'll just take the top 5 by XP for now as "Current Champions"
+                const topChampions = userList.sort((a,b) => (b.xp || 0) - (a.xp || 0)).slice(0, 5);
+                const feed = document.getElementById('recentWinnersFeed');
+                feed.innerHTML = '';
+                
+                topChampions.forEach(champ => {
+                    const initials = (champ.displayName || "?").substring(0, 2).toUpperCase();
+                    const div = document.createElement('div');
+                    div.className = "flex items-center justify-between border-b border-white/5 pb-4 transition-all hover:bg-white/5 p-2 rounded-xl";
+                    div.innerHTML = `
+                        <div class="flex items-center gap-4">
+                            <div class="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center font-black border border-white/10 text-xs">${initials}</div>
+                            <div>
+                                <span class="block font-bold">${champ.displayName}</span>
+                                <span class="text-[10px] uppercase opacity-50">Global Champion Status</span>
+                            </div>
+                        </div>
+                        <span class="text-xs font-black text-yellow-400">${champ.xp} XP Mapped</span>
+                    `;
+                    feed.appendChild(div);
+                });
+
+                // 3. Update Ticker with live stats
+                const ticker = document.getElementById('tickerContent');
+                if (ticker) {
+                    ticker.innerHTML = `
+                        <span class="mx-8"><span class="text-yellow-400">●</span> ${userList.length} Legends Online</span>
+                        <span class="mx-8"><span class="text-cyan-400">●</span> ${totalWins} Global Victories Recorded</span>
+                        <span class="mx-8"><span class="text-red-500">●</span> Total XP Mapped: ${totalXP}</span>
+                        <span class="mx-8"><span class="text-emerald-400">●</span> Connection Secure: EU-NODE-7</span>
+                        <span class="mx-8"><span class="text-yellow-400">●</span> ${userList.length} Legends Online</span>
+                        <span class="mx-8"><span class="text-cyan-400">●</span> ${totalWins} Global Victories Recorded</span>
+                    `;
+                }
+            });
+        }
+        initRealTimeHomepage();
+
+        async function openLeaderboard() {
+            document.getElementById('homePage').classList.add('hidden');
+            document.getElementById('leaderboardPage').classList.remove('hidden');
+            const list = document.getElementById('leaderboardList');
+            list.innerHTML = '<div class="flex items-center justify-center p-12 text-white/40 italic">Syncing with global matrix...</div>';
+            
+            try {
+                const usersRef = query(ref(db, 'users'), orderByChild('xp'), limitToLast(10));
+                const snapshot = await get(usersRef);
+                list.innerHTML = '';
+                const data = [];
+                snapshot.forEach(child => { data.push(child.val()); });
+                data.reverse().forEach((user, i) => {
+                    const row = document.createElement('div');
+                    row.className = "flex items-center justify-between bg-white/5 border border-white/10 p-4 rounded-2xl hover:bg-white/10 transition";
+                    row.innerHTML = `
+                        <div class="flex items-center gap-4">
+                            <span class="text-xl font-black ${i<3 ? 'text-yellow-400' : 'text-white/20'}">#${i+1}</span>
+                            <div class="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center font-bold">${(user.displayName && user.displayName[0]) || '?'}</div>
+                            <span class="font-bold">${user.displayName}</span>
+                        </div>
+                        <div class="text-right">
+                            <span class="block font-black text-yellow-400">${user.xp || 0} XP</span>
+                            <span class="text-[10px] uppercase opacity-40">${user.wins || 0} Victories</span>
+                        </div>
+                    `;
+                    list.appendChild(row);
+                });
+                if(data.length === 0) list.innerHTML = '<div class="p-12 text-white/40 italic">No legends found in the matrix yet.</div>';
+            } catch (err) { list.innerHTML = `<div class="p-8 text-red-400">${err.message}</div>`; }
+        }
+
+        async function awardXP(amount) {
+            if (!currentUser) return;
+            const userRef = ref(db, 'users/' + currentUser.uid);
+            try {
+                const snapshot = await get(userRef);
+                if (snapshot.exists()) {
+                    const data = snapshot.val();
+                    await update(userRef, {
+                        xp: (data.xp || 0) + amount,
+                        wins: (data.wins || 0) + 1
+                    });
+                }
+            } catch (err) { console.error("Error awarding XP:", err); }
+        }
+
+        window.openAuthPage = openAuthPage;
+        window.toggleAuthMode = toggleAuthMode;
+        window.handleLogin = handleLogin;
+        window.handleRegister = handleRegister;
+        window.handleLogout = handleLogout;
+        window.openLeaderboard = openLeaderboard;
+    </script>
+</body>
+</html>
